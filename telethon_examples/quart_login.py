@@ -40,7 +40,7 @@ CODE_FORM = '''
 
 PASSWORD_FORM = '''
 <form action='/' method='post'>
-    Telegram password: <input name='password' type='text' placeholder='your password'>
+    Telegram password: <input name='password' type='password' placeholder='your password'>
     <input type='submit'>
 </form>
 '''
@@ -57,7 +57,7 @@ phone = None
 
 # Quart app
 app = Quart(__name__)
-app.secret_key = 'CHANGE THIS TO SOMETHING SECRET'
+app.secret_key = os.urandom(32)
 
 
 # Helper method to format messages nicely

@@ -12,8 +12,14 @@ class IntermediatePacketCodec(PacketCodec):
     def encode_packet(self, data):
         return struct.pack('<i', len(data)) + data
 
+    MAX_PACKET_SIZE = 2 * 1024 * 1024  # 2 MB — larger than any valid Telegram payload
+
     async def read_packet(self, reader):
         length = struct.unpack('<i', await reader.readexactly(4))[0]
+        if length <= 0 or length > self.MAX_PACKET_SIZE:
+            raise ValueError(
+                'Invalid packet length: {} (max {})'.format(length, self.MAX_PACKET_SIZE)
+            )
         return await reader.readexactly(length)
 
 

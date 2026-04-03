@@ -1,6 +1,7 @@
 """
 This module holds the AuthKey class.
 """
+import hmac
 import struct
 from hashlib import sha1
 
@@ -60,4 +61,4 @@ class AuthKey:
         return bool(self._key)
 
     def __eq__(self, other):
-        return isinstance(other, type(self)) and other.key == self._key
+        return isinstance(other, type(self)) and hmac.compare_digest(other.key, self._key)

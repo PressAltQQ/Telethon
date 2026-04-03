@@ -13,10 +13,19 @@ from ..tl.types import (
 from .. import helpers
 from ..crypto import AES, AuthKey, Factorization, rsa
 from ..errors import SecurityError
+from ..password import check_prime_and_good
 from ..extensions import BinaryReader
 from ..tl.functions import (
     ReqPqMultiRequest, ReqDHParamsRequest, SetClientDHParamsRequest
 )
+
+
+def _validate_dh_params(dh_prime_bytes, g):
+    """Validates that the DH prime is known-good and g is a valid generator."""
+    try:
+        check_prime_and_good(dh_prime_bytes, g)
+    except ValueError as e:
+        raise SecurityError('Step 3 invalid DH prime: {}'.format(e))
 
 
 async def do_authentication(sender):
@@ -124,6 +133,8 @@ async def do_authentication(sender):
 
     if server_dh_inner.server_nonce != res_pq.server_nonce:
         raise SecurityError('Step 3 Invalid server nonce in encrypted answer')
+
+    _validate_dh_params(server_dh_inner.dh_prime, server_dh_inner.g)
 
     dh_prime = get_int(server_dh_inner.dh_prime, signed=False)
     g = server_dh_inner.g

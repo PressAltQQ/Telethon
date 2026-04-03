@@ -66,3 +66,17 @@ def test_verify_dh_inner_hash_fails_on_tampered():
     hash_bytes = sha1(b'different data').digest()
     with pytest.raises(SecurityError):
         _verify_dh_inner_hash(hash_bytes, data)
+
+
+import ast
+import inspect
+import textwrap
+from telethon.network.authenticator import do_authentication
+
+def test_authenticator_has_no_assert():
+    source = textwrap.dedent(inspect.getsource(do_authentication))
+    tree = ast.parse(source)
+    asserts = [node for node in ast.walk(tree) if isinstance(node, ast.Assert)]
+    assert len(asserts) == 0, (
+        f"do_authentication still uses {len(asserts)} assert statement(s)."
+    )

@@ -45,7 +45,8 @@ async def do_authentication(sender):
     # Step 1 sending: PQ Request, endianness doesn't matter since it's random
     nonce = int.from_bytes(os.urandom(16), 'big', signed=True)
     res_pq = await sender.send(ReqPqMultiRequest(nonce))
-    assert isinstance(res_pq, ResPQ), 'Step 1 answer was %s' % res_pq
+    if not isinstance(res_pq, ResPQ):
+        raise SecurityError('Step 1 answer was %s' % res_pq)
 
     if res_pq.nonce != nonce:
         raise SecurityError('Step 1 invalid nonce from server')
@@ -96,9 +97,8 @@ async def do_authentication(sender):
         encrypted_data=cipher_text
     ))
 
-    assert isinstance(
-        server_dh_params, (ServerDHParamsOk, ServerDHParamsFail)),\
-        'Step 2.1 answer was %s' % server_dh_params
+    if not isinstance(server_dh_params, (ServerDHParamsOk, ServerDHParamsFail)):
+        raise SecurityError('Step 2.1 answer was %s' % server_dh_params)
 
     if server_dh_params.nonce != res_pq.nonce:
         raise SecurityError('Step 2 invalid nonce from server')
@@ -114,8 +114,8 @@ async def do_authentication(sender):
         if server_dh_params.new_nonce_hash != nnh:
             raise SecurityError('Step 2 invalid DH fail nonce from server')
 
-    assert isinstance(server_dh_params, ServerDHParamsOk),\
-        'Step 2.2 answer was %s' % server_dh_params
+    if not isinstance(server_dh_params, ServerDHParamsOk):
+        raise SecurityError('Step 2.2 answer was %s' % server_dh_params)
 
     # Step 3 sending: Complete DH Exchange
     key, iv = helpers.generate_key_data_from_nonce(
@@ -197,7 +197,8 @@ async def do_authentication(sender):
     ))
 
     nonce_types = (DhGenOk, DhGenRetry, DhGenFail)
-    assert isinstance(dh_gen, nonce_types), 'Step 3.1 answer was %s' % dh_gen
+    if not isinstance(dh_gen, nonce_types):
+        raise SecurityError('Step 3.1 answer was %s' % dh_gen)
     name = dh_gen.__class__.__name__
     if dh_gen.nonce != res_pq.nonce:
         raise SecurityError('Step 3 invalid {} nonce from server'.format(name))

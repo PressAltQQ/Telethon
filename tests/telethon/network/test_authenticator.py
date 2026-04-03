@@ -3,7 +3,7 @@ Tests for DH prime validation in the authenticator module.
 """
 import pytest
 
-from telethon.network.authenticator import _validate_dh_params
+from telethon.network.authenticator import _validate_dh_params, _verify_dh_inner_hash
 from telethon.errors import SecurityError
 
 # Known-good Telegram 2048-bit DH prime (from telethon/password.py)
@@ -51,3 +51,18 @@ def test_validate_dh_params_rejects_bad_generator():
     # 32 bytes (256 bits) — wrong bit length triggers immediate ValueError
     with pytest.raises(SecurityError):
         _validate_dh_params(b'\xff' * 32, 99)
+
+
+def test_verify_dh_inner_hash_passes_on_valid():
+    from hashlib import sha1
+    data = b'some test dh inner data'
+    hash_bytes = sha1(data).digest()
+    _verify_dh_inner_hash(hash_bytes, data)
+
+
+def test_verify_dh_inner_hash_fails_on_tampered():
+    from hashlib import sha1
+    data = b'some test dh inner data'
+    hash_bytes = sha1(b'different data').digest()
+    with pytest.raises(SecurityError):
+        _verify_dh_inner_hash(hash_bytes, data)

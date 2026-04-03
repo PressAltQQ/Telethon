@@ -20,6 +20,13 @@ from ..tl.functions import (
 )
 
 
+def _verify_dh_inner_hash(expected_hash, inner_data_bytes):
+    """Verifies SHA-1 hash of decrypted DH inner data matches expected."""
+    actual_hash = sha1(inner_data_bytes).digest()
+    if expected_hash != actual_hash:
+        raise SecurityError('Step 3 DH inner data hash mismatch')
+
+
 def _validate_dh_params(dh_prime_bytes, g):
     """Validates that the DH prime is known-good and g is a valid generator."""
     try:
@@ -123,10 +130,12 @@ async def do_authentication(sender):
     )
 
     with BinaryReader(plain_text_answer) as reader:
-        reader.read(20)  # hash sum
+        hash_bytes = reader.read(20)  # hash sum
         server_dh_inner = reader.tgread_object()
-        assert isinstance(server_dh_inner, ServerDHInnerData),\
-            'Step 3 answer was %s' % server_dh_inner
+        if not isinstance(server_dh_inner, ServerDHInnerData):
+            raise SecurityError('Step 3 answer was %s' % server_dh_inner)
+
+    _verify_dh_inner_hash(hash_bytes, bytes(server_dh_inner))
 
     if server_dh_inner.nonce != res_pq.nonce:
         raise SecurityError('Step 3 Invalid nonce in encrypted answer')

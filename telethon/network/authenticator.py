@@ -2,6 +2,7 @@
 This module contains several functions that authenticate the client machine
 with Telegram's servers, effectively creating an authorization key.
 """
+import hmac
 import os
 import time
 from hashlib import sha1
@@ -23,7 +24,7 @@ from ..tl.functions import (
 def _verify_dh_inner_hash(expected_hash, inner_data_bytes):
     """Verifies SHA-1 hash of decrypted DH inner data matches expected."""
     actual_hash = sha1(inner_data_bytes).digest()
-    if expected_hash != actual_hash:
+    if not hmac.compare_digest(expected_hash, actual_hash):
         raise SecurityError('Step 3 DH inner data hash mismatch')
 
 

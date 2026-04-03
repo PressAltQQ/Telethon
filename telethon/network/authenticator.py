@@ -13,8 +13,8 @@ from ..tl.types import (
 from .. import helpers
 from ..crypto import AES, AuthKey, Factorization, rsa
 from ..errors import SecurityError
-from ..password import check_prime_and_good
 from ..extensions import BinaryReader
+from ..password import check_prime_and_good
 from ..tl.functions import (
     ReqPqMultiRequest, ReqDHParamsRequest, SetClientDHParamsRequest
 )

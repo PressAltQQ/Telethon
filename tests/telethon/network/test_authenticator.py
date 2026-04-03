@@ -34,6 +34,20 @@ def test_validate_dh_params_accepts_good_prime():
 
 
 def test_validate_dh_params_rejects_bad_prime():
-    """All-zero bytes (not a valid prime) should raise SecurityError."""
-    with pytest.raises((SecurityError, ValueError)):
+    """All-zero bytes (not a valid prime) should raise SecurityError (not raw ValueError)."""
+    with pytest.raises(SecurityError):
         _validate_dh_params(b'\x00' * 256, 3)
+
+
+def test_validate_dh_params_rejects_bad_generator():
+    """An invalid generator value (not 2-7) should raise SecurityError.
+
+    Uses a short prime (wrong bit length) so check_prime_and_good_check()
+    fails fast on the bit-length guard rather than running expensive factorization.
+    The generator is still validated first via the known-good prime fast path:
+    GOOD_PRIME_BYTES with g not in (3,4,5,7) falls through to the slow path,
+    so we instead supply wrong-length bytes to get an immediate ValueError → SecurityError.
+    """
+    # 32 bytes (256 bits) — wrong bit length triggers immediate ValueError
+    with pytest.raises(SecurityError):
+        _validate_dh_params(b'\xff' * 32, 99)

@@ -258,6 +258,8 @@ class SQLiteSession(MemorySession):
         if self._conn is None:
             self._conn = sqlite3.connect(self.filename,
                                          check_same_thread=False)
+            if self.filename != ':memory:':
+                os.chmod(self.filename, 0o600)
         return self._conn.cursor()
 
     def _execute(self, stmt, *values):

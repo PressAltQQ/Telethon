@@ -58,11 +58,11 @@ class Connection(abc.ABC):
                 'without the SSL module being available'
             )
 
-        return ssl_mod.wrap_socket(
-            sock,
-            do_handshake_on_connect=True,
-            ssl_version=ssl_mod.PROTOCOL_SSLv23,
-            ciphers='ADH-AES256-SHA')
+        ctx = ssl_mod.SSLContext(ssl_mod.PROTOCOL_TLS_CLIENT)
+        ctx.minimum_version = ssl_mod.TLSVersion.TLSv1_2
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl_mod.CERT_NONE
+        return ctx.wrap_socket(sock, do_handshake_on_connect=True)
 
     @staticmethod
     def _parse_proxy(proxy_type, addr, port, rdns=True, username=None, password=None):

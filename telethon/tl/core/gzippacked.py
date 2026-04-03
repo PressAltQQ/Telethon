@@ -9,6 +9,7 @@ from .. import TLObject
 
 class GzipPacked(TLObject):
     CONSTRUCTOR_ID = 0x3072cfa1
+    MAX_DECOMPRESSED_SIZE = 16 * 1024 * 1024  # 16 MB
 
     def __init__(self, data):
         self.data = data
@@ -35,11 +36,23 @@ class GzipPacked(TLObject):
     def read(reader):
         constructor = reader.read_int(signed=False)
         assert constructor == GzipPacked.CONSTRUCTOR_ID
-        return gzip.decompress(reader.tgread_bytes())
+        decompressed = gzip.decompress(reader.tgread_bytes())
+        if len(decompressed) > GzipPacked.MAX_DECOMPRESSED_SIZE:
+            raise ValueError(
+                'Decompressed data exceeds maximum allowed size '
+                '({} > {})'.format(len(decompressed), GzipPacked.MAX_DECOMPRESSED_SIZE)
+            )
+        return decompressed
 
     @classmethod
     def from_reader(cls, reader):
-        return GzipPacked(gzip.decompress(reader.tgread_bytes()))
+        decompressed = gzip.decompress(reader.tgread_bytes())
+        if len(decompressed) > cls.MAX_DECOMPRESSED_SIZE:
+            raise ValueError(
+                'Decompressed data exceeds maximum allowed size '
+                '({} > {})'.format(len(decompressed), cls.MAX_DECOMPRESSED_SIZE)
+            )
+        return GzipPacked(decompressed)
 
     def to_dict(self):
         return {

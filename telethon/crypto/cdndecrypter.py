@@ -1,6 +1,7 @@
 """
 This module holds the CdnDecrypter utility class.
 """
+import hmac
 from hashlib import sha256
 
 from ..tl.functions.upload import GetCdnFileRequest, ReuploadCdnFileRequest
@@ -101,5 +102,5 @@ class CdnDecrypter:
         :param data: the data to be hashed.
         :param cdn_hash: the expected hash.
         """
-        if sha256(data).digest() != cdn_hash.hash:
+        if not hmac.compare_digest(sha256(data).digest(), cdn_hash.hash):
             raise CdnFileTamperedError()

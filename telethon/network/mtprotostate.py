@@ -1,6 +1,7 @@
 import os
 import struct
 import time
+import hmac
 from hashlib import sha256
 from collections import deque
 
@@ -169,7 +170,7 @@ class MTProtoState:
         # https://core.telegram.org/mtproto/security_guidelines
         # Sections "checking sha256 hash" and "message length"
         our_key = sha256(self.auth_key.key[96:96 + 32] + body)
-        if msg_key != our_key.digest()[8:24]:
+        if not hmac.compare_digest(msg_key, our_key.digest()[8:24]):
             raise SecurityError(
                 "Received msg_key doesn't match with expected one")
 

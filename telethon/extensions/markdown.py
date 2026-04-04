@@ -36,7 +36,7 @@ def parse(message, delimiters=None, url_re=None):
     :param url_re: the URL bytes regex to be used. Must have two groups.
     :return: a tuple consisting of (clean message, [message entities]).
     """
-    if not message:
+    if not message or len(message) > 8192:
         return message, []
 
     if url_re is None:

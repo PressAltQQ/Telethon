@@ -955,8 +955,8 @@ class DownloadMethods:
         phone_number = mm_contact.phone_number
 
         # Remove these pesky characters
-        first_name = first_name.replace(';', '')
-        last_name = (last_name or '').replace(';', '')
+        first_name = first_name.replace(';', '').replace('\n', '').replace('\r', '')
+        last_name = (last_name or '').replace(';', '').replace('\n', '').replace('\r', '')
         result = (
             'BEGIN:VCARD\n'
             'VERSION:4.0\n'

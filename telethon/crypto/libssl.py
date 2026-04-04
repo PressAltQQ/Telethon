@@ -95,6 +95,24 @@ else:
             ('rounds', ctypes.c_uint),
         ]
 
+    # Define argtypes and restype for type safety
+    _libssl.AES_set_decrypt_key.argtypes = [
+        ctypes.POINTER(ctypes.c_ubyte), ctypes.c_int, ctypes.POINTER(AES_KEY)
+    ]
+    _libssl.AES_set_decrypt_key.restype = ctypes.c_int
+
+    _libssl.AES_set_encrypt_key.argtypes = [
+        ctypes.POINTER(ctypes.c_ubyte), ctypes.c_int, ctypes.POINTER(AES_KEY)
+    ]
+    _libssl.AES_set_encrypt_key.restype = ctypes.c_int
+
+    _libssl.AES_ige_encrypt.argtypes = [
+        ctypes.POINTER(ctypes.c_ubyte), ctypes.POINTER(ctypes.c_ubyte),
+        ctypes.c_size_t, ctypes.POINTER(AES_KEY),
+        ctypes.POINTER(ctypes.c_ubyte), ctypes.c_int
+    ]
+    _libssl.AES_ige_encrypt.restype = None
+
     def decrypt_ige(cipher_text, key, iv):
         aes_key = AES_KEY()
         key_len = ctypes.c_int(8 * len(key))
@@ -105,7 +123,9 @@ else:
         in_ptr = (ctypes.c_ubyte * len(cipher_text))(*cipher_text)
         out_ptr = (ctypes.c_ubyte * len(cipher_text))()
 
-        _libssl.AES_set_decrypt_key(key, key_len, ctypes.byref(aes_key))
+        result = _libssl.AES_set_decrypt_key(key, key_len, ctypes.byref(aes_key))
+        if result < 0:
+            raise RuntimeError('AES_set_decrypt_key failed with code {}'.format(result))
         _libssl.AES_ige_encrypt(
             ctypes.byref(in_ptr),
             ctypes.byref(out_ptr),
@@ -127,7 +147,9 @@ else:
         in_ptr = (ctypes.c_ubyte * len(plain_text))(*plain_text)
         out_ptr = (ctypes.c_ubyte * len(plain_text))()
 
-        _libssl.AES_set_encrypt_key(key, key_len, ctypes.byref(aes_key))
+        result = _libssl.AES_set_encrypt_key(key, key_len, ctypes.byref(aes_key))
+        if result < 0:
+            raise RuntimeError('AES_set_encrypt_key failed with code {}'.format(result))
         _libssl.AES_ige_encrypt(
             ctypes.byref(in_ptr),
             ctypes.byref(out_ptr),

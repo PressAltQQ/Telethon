@@ -175,7 +175,12 @@ class MTProtoState:
                 "Received msg_key doesn't match with expected one")
 
         reader = BinaryReader(body)
-        reader.read_long()  # remote_salt
+        remote_salt = reader.read_long()
+        if self.salt and remote_salt != self.salt:
+            self._log.warning(
+                'Server salt mismatch (expected %d, got %d)',
+                self.salt, remote_salt
+            )
         if reader.read_long() != self.id:
             raise SecurityError('Server replied with a wrong session ID (see FAQ for details)')
 
@@ -184,9 +189,9 @@ class MTProtoState:
         if remote_msg_id % 2 != 1:
             raise SecurityError('Server sent an even msg_id')
 
-        # Only perform the (somewhat expensive) check of duplicate if we did receive a lower ID
-        if remote_msg_id <= self._highest_remote_id and remote_msg_id in self._recent_remote_ids:
-            self._log.warning('Server resent the older message %d, ignoring', remote_msg_id)
+        # Always check for duplicates, not just for lower IDs
+        if remote_msg_id in self._recent_remote_ids:
+            self._log.warning('Server resent message %d, ignoring', remote_msg_id)
             self._count_ignored()
             return None
 

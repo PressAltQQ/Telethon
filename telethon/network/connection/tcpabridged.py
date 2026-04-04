@@ -2,6 +2,8 @@ import struct
 
 from .connection import Connection, PacketCodec
 
+MAX_PACKET_SIZE = 2 * 1024 * 1024
+
 
 class AbridgedPacketCodec(PacketCodec):
     tag = b'\xef'
@@ -21,7 +23,11 @@ class AbridgedPacketCodec(PacketCodec):
             length = struct.unpack(
                 '<i', await reader.readexactly(3) + b'\0')[0]
 
-        return await reader.readexactly(length << 2)
+        packet_size = length << 2
+        if packet_size <= 0 or packet_size > MAX_PACKET_SIZE:
+            raise RuntimeError(
+                'Abridged packet size {} is invalid or exceeds maximum'.format(packet_size))
+        return await reader.readexactly(packet_size)
 
 
 class ConnectionTcpAbridged(Connection):

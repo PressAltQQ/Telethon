@@ -52,6 +52,8 @@ class InlineQuery(EventBuilder):
         super().__init__(users, blacklist_chats=blacklist_users, func=func)
 
         if isinstance(pattern, str):
+            if len(pattern) > 1000:
+                raise ValueError('Pattern too long (max 1000 characters)')
             self.pattern = re.compile(pattern).match
         elif not pattern or callable(pattern):
             self.pattern = pattern

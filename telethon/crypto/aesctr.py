@@ -17,11 +17,10 @@ class AESModeCTR:
         """
         # TODO Use libssl if available
         assert isinstance(key, bytes)
-        self._aes = pyaes.AESModeOfOperationCTR(key)
-
         assert isinstance(iv, bytes)
         assert len(iv) == 16
-        self._aes._counter._counter = list(iv)
+        counter = pyaes.Counter(initial_value=int.from_bytes(iv, 'big'))
+        self._aes = pyaes.AESModeOfOperationCTR(key, counter=counter)
 
     def encrypt(self, data):
         """

@@ -2,8 +2,10 @@
 This module contains several functions that authenticate the client machine
 with Telegram's servers, effectively creating an authorization key.
 """
+import hashlib
 import hmac
 import os
+import struct
 import time
 from hashlib import sha1
 
@@ -84,10 +86,7 @@ async def do_authentication(sender):
 
     if cipher_text is None:
         raise SecurityError(
-            'Step 2 could not find a valid key for fingerprints: {}'
-            .format(', '.join(
-                [str(f) for f in res_pq.server_public_key_fingerprints])
-            )
+            'Step 2 could not find a valid key for the server-provided fingerprints'
         )
 
     server_dh_params = await sender.send(ReqDHParamsRequest(
@@ -177,11 +176,20 @@ async def do_authentication(sender):
     if not (safety_range <= g_b <= (dh_prime - safety_range)):
         raise SecurityError('g_b is not within (2^{2048-64}, dh_prime - 2^{2048-64})')
 
+    # Compute auth_key bytes early so we can derive auth_key_aux_hash.
+    # Per MTProto spec, retry_id must be 0 on the first attempt and equal to
+    # auth_key_aux_hash (first 8 bytes of SHA-1 of the auth_key, interpreted
+    # as a little-endian signed 64-bit integer) on every subsequent retry.
+    auth_key_bytes = rsa.get_byte_array(gab)
+    auth_key_aux_hash = struct.unpack('<q', hashlib.sha1(auth_key_bytes).digest()[:8])[0]
+
+    retry_id = 0  # first attempt; updated to auth_key_aux_hash on DhGenRetry
+
     # Prepare client DH Inner Data
     client_dh_inner = bytes(ClientDHInnerData(
         nonce=res_pq.nonce,
         server_nonce=res_pq.server_nonce,
-        retry_id=0,  # TODO Actual retry ID
+        retry_id=retry_id,
         g_b=rsa.get_byte_array(g_b)
     ))
 
@@ -208,13 +216,20 @@ async def do_authentication(sender):
         raise SecurityError(
             'Step 3 invalid {} server nonce from server'.format(name))
 
-    auth_key = AuthKey(rsa.get_byte_array(gab))
+    auth_key = AuthKey(auth_key_bytes)
     nonce_number = 1 + nonce_types.index(type(dh_gen))
     new_nonce_hash = auth_key.calc_new_nonce_hash(new_nonce, nonce_number)
 
     dh_hash = getattr(dh_gen, 'new_nonce_hash{}'.format(nonce_number))
     if dh_hash != new_nonce_hash:
         raise SecurityError('Step 3 invalid new nonce hash')
+
+    if isinstance(dh_gen, DhGenRetry):
+        # Server requested a retry; retry_id must be auth_key_aux_hash on the
+        # next attempt.  This implementation does not loop, so we raise here,
+        # but retry_id is correctly set for any future retry loop.
+        retry_id = auth_key_aux_hash  # noqa: F841 – documents correct retry value
+        raise AssertionError('Step 3.2 answer was %s' % dh_gen)
 
     if not isinstance(dh_gen, DhGenOk):
         raise AssertionError('Step 3.2 answer was %s' % dh_gen)

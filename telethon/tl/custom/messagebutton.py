@@ -118,7 +118,9 @@ class MessageButton:
             ))
         elif isinstance(self.button, types.KeyboardButtonUrl):
             if open_url:
-                if "webbrowser" in sys.modules:
+                from urllib.parse import urlparse
+                parsed = urlparse(self.button.url)
+                if parsed.scheme in ('http', 'https') and "webbrowser" in sys.modules:
                     return webbrowser.open(self.button.url)
             return self.button.url
         elif isinstance(self.button, types.KeyboardButtonGame):

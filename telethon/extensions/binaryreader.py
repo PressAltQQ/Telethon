@@ -12,6 +12,9 @@ from ..tl.core import core_objects
 _EPOCH_NAIVE = datetime(*time.gmtime(0)[:6])
 _EPOCH = _EPOCH_NAIVE.replace(tzinfo=timezone.utc)
 
+MAX_VECTOR_SIZE = 1_000_000
+MAX_RECURSION_DEPTH = 16
+
 
 class BinaryReader:
     """
@@ -22,6 +25,7 @@ class BinaryReader:
         self.stream = data or b''
         self.position = 0
         self._last = None  # Should come in handy to spot -404 errors
+        self._depth = 0
 
     # region Reading
 
@@ -133,29 +137,37 @@ class BinaryReader:
 
     def tgread_object(self):
         """Reads a Telegram object."""
-        constructor_id = self.read_int(signed=False)
-        clazz = tlobjects.get(constructor_id, None)
-        if clazz is None:
-            # The class was None, but there's still a
-            # chance of it being a manually parsed value like bool!
-            value = constructor_id
-            if value == 0x997275b5:  # boolTrue
-                return True
-            elif value == 0xbc799737:  # boolFalse
-                return False
-            elif value == 0x1cb5c415:  # Vector
-                return [self.tgread_object() for _ in range(self.read_int())]
-
-            clazz = core_objects.get(constructor_id, None)
+        self._depth += 1
+        if self._depth > MAX_RECURSION_DEPTH:
+            raise RuntimeError(
+                'Maximum deserialization depth ({}) exceeded'.format(MAX_RECURSION_DEPTH))
+        try:
+            constructor_id = self.read_int(signed=False)
+            clazz = tlobjects.get(constructor_id, None)
             if clazz is None:
-                # If there was still no luck, give up
-                self.seek(-4)  # Go back
-                pos = self.tell_position()
-                error = TypeNotFoundError(constructor_id, self.read())
-                self.set_position(pos)
-                raise error
+                value = constructor_id
+                if value == 0x997275b5:  # boolTrue
+                    return True
+                elif value == 0xbc799737:  # boolFalse
+                    return False
+                elif value == 0x1cb5c415:  # Vector
+                    count = self.read_int()
+                    if count > MAX_VECTOR_SIZE:
+                        raise RuntimeError(
+                            'Vector size {} exceeds maximum {}'.format(count, MAX_VECTOR_SIZE))
+                    return [self.tgread_object() for _ in range(count)]
 
-        return clazz.from_reader(self)
+                clazz = core_objects.get(constructor_id, None)
+                if clazz is None:
+                    self.seek(-4)
+                    pos = self.tell_position()
+                    error = TypeNotFoundError(constructor_id, self.read())
+                    self.set_position(pos)
+                    raise error
+
+            return clazz.from_reader(self)
+        finally:
+            self._depth -= 1
 
     def tgread_vector(self):
         """Reads a vector (a list) of Telegram objects."""
@@ -163,6 +175,9 @@ class BinaryReader:
             raise RuntimeError('Invalid constructor code, vector was expected')
 
         count = self.read_int()
+        if count > MAX_VECTOR_SIZE:
+            raise RuntimeError(
+                'Vector size {} exceeds maximum {}'.format(count, MAX_VECTOR_SIZE))
         return [self.tgread_object() for _ in range(count)]
 
     # endregion

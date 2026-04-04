@@ -1,5 +1,6 @@
 import datetime
 import os
+import threading
 import time
 
 from ..tl import types
@@ -45,6 +46,7 @@ class SQLiteSession(MemorySession):
                 self.filename += EXTENSION
 
         self._conn = None
+        self._db_lock = threading.Lock()
         c = self._cursor()
         c.execute("select name from sqlite_master "
                   "where type='table' and name='version'")
@@ -255,12 +257,13 @@ class SQLiteSession(MemorySession):
 
     def _cursor(self):
         """Asserts that the connection is open and returns a cursor"""
-        if self._conn is None:
-            self._conn = sqlite3.connect(self.filename,
-                                         check_same_thread=False)
-            if self.filename != ':memory:':
-                os.chmod(self.filename, 0o600)
-        return self._conn.cursor()
+        with self._db_lock:
+            if self._conn is None:
+                self._conn = sqlite3.connect(self.filename,
+                                             check_same_thread=False)
+                if self.filename != ':memory:':
+                    os.chmod(self.filename, 0o600)
+            return self._conn.cursor()
 
     def _execute(self, stmt, *values):
         """

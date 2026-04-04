@@ -1,7 +1,7 @@
 """
 This module holds a fast Factorization class.
 """
-from random import randint
+from secrets import randbelow
 
 
 class Factorization:
@@ -21,7 +21,7 @@ class Factorization:
         if pq % 2 == 0:
             return 2, pq // 2
 
-        y, c, m = randint(1, pq - 1), randint(1, pq - 1), randint(1, pq - 1)
+        y, c, m = randbelow(pq - 1) + 1, randbelow(pq - 1) + 1, randbelow(pq - 1) + 1
         g = r = q = 1
         x = ys = 0
 

@@ -35,8 +35,12 @@ class MessageContainer(TLObject):
     @classmethod
     def from_reader(cls, reader):
         # This assumes that .read_* calls are done in the order they appear
+        count = reader.read_int()
+        if count > cls.MAXIMUM_LENGTH:
+            raise ValueError(
+                'Container has {} messages, max is {}'.format(count, cls.MAXIMUM_LENGTH))
         messages = []
-        for _ in range(reader.read_int()):
+        for _ in range(count):
             msg_id = reader.read_long()
             seq_no = reader.read_int()
             length = reader.read_int()

@@ -151,12 +151,12 @@ ENTITY_TO_FORMATTER = {
     MessageEntityPre: lambda e, _: (
         "<pre>\n"
         "    <code class='language-{}'>\n"
-        "        ".format(e.language), "{}\n"
+        "        ".format(escape(e.language, quote=True)), "{}\n"
         "    </code>\n"
         "</pre>"
     ),
-    MessageEntityEmail: lambda _, t: ('<a href="mailto:{}">'.format(t), '</a>'),
-    MessageEntityUrl: lambda _, t: ('<a href="{}">'.format(t), '</a>'),
+    MessageEntityEmail: lambda _, t: ('<a href="mailto:{}">'.format(escape(t, quote=True)), '</a>'),
+    MessageEntityUrl: lambda _, t: ('<a href="{}">'.format(escape(t, quote=True)), '</a>'),
     MessageEntityTextUrl: lambda e, _: ('<a href="{}">'.format(escape(e.url)), '</a>'),
     MessageEntityMentionName: lambda e, _: ('<a href="tg://user?id={}">'.format(e.user_id), '</a>'),
     MessageEntityCustomEmoji: lambda e, _: ('<tg-emoji emoji-id="{}">'.format(e.document_id), '</tg-emoji>'),

@@ -2,6 +2,7 @@ import asyncio
 
 from .connection import Connection, PacketCodec
 
+MAX_PACKET_SIZE = 2 * 1024 * 1024
 
 SSL_PORT = 443
 
@@ -11,13 +12,16 @@ class HttpPacketCodec(PacketCodec):
     obfuscate_tag = None
 
     def encode_packet(self, data):
+        # Sanitize to prevent CRLF header injection
+        ip = str(self._conn._ip).replace('\r', '').replace('\n', '')
+        port = int(self._conn._port)
         return ('POST /api HTTP/1.1\r\n'
                 'Host: {}:{}\r\n'
                 'Content-Type: application/x-www-form-urlencoded\r\n'
                 'Connection: keep-alive\r\n'
                 'Keep-Alive: timeout=100000, max=10000000\r\n'
                 'Content-Length: {}\r\n\r\n'
-                .format(self._conn._ip, self._conn._port, len(data))
+                .format(ip, port, len(data))
                 .encode('ascii') + data)
 
     async def read_packet(self, reader):

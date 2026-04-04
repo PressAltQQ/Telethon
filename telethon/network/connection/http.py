@@ -33,6 +33,9 @@ class HttpPacketCodec(PacketCodec):
             if line.lower().startswith(b'content-length: '):
                 await reader.readexactly(2)
                 length = int(line[16:-2])
+                if length <= 0 or length > MAX_PACKET_SIZE:
+                    raise RuntimeError(
+                        'HTTP content length {} is invalid or exceeds maximum'.format(length))
                 return await reader.readexactly(length)
 
 

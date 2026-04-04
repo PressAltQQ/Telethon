@@ -5,6 +5,8 @@ from zlib import crc32
 from .connection import Connection, PacketCodec
 from ...errors import InvalidChecksumError, InvalidBufferError
 
+MAX_PACKET_SIZE = 2 * 1024 * 1024
+
 
 class FullPacketCodec(PacketCodec):
     tag = None
@@ -39,6 +41,10 @@ class FullPacketCodec(PacketCodec):
             # Attempting to `readexactly` with less than 0 fails without saying what
             # the number was which is less helpful.
             raise InvalidBufferError(packet_len_seq)
+
+        if packet_len > MAX_PACKET_SIZE:
+            raise RuntimeError(
+                'Full packet length {} is invalid or exceeds maximum'.format(packet_len))
 
         body = await reader.readexactly(packet_len - 8)
         checksum = struct.unpack('<I', body[-4:])[0]

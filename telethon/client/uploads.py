@@ -815,6 +815,10 @@ class UploadMethods:
                 progress_callback=progress_callback
             )
         elif re.match('https?://', file):
+            # WARNING: The URL is passed to Telegram's servers, which will
+            # fetch it server-side. If `file` comes from untrusted user input,
+            # validate it first to prevent SSRF attacks (e.g., block private
+            # IP ranges, internal hostnames, and metadata endpoints).
             if as_image:
                 media = types.InputMediaPhotoExternal(file, ttl_seconds=ttl)
             else:

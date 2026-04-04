@@ -193,9 +193,10 @@ def main(argv):
         for x in remove_dirs:
             shutil.rmtree(x, ignore_errors=True)
 
-        run('python3 setup.py sdist', shell=True)
-        run('python3 setup.py bdist_wheel', shell=True)
-        run('twine upload dist/*', shell=True)
+        import glob as _glob
+        run(['python3', 'setup.py', 'sdist'])
+        run(['python3', 'setup.py', 'bdist_wheel'])
+        run(['twine', 'upload'] + _glob.glob('dist/*'))
         for x in ('build', 'dist', 'Telethon.egg-info'):
             shutil.rmtree(x, ignore_errors=True)
 

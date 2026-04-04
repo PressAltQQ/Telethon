@@ -65,6 +65,8 @@ class CallbackQuery(EventBuilder):
         if isinstance(data, str):
             data = data.encode('utf-8')
         if isinstance(pattern, str):
+            if len(pattern) > 1000:
+                raise ValueError('Pattern too long (max 1000 characters)')
             pattern = pattern.encode('utf-8')
 
         match = data if data else pattern

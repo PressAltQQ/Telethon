@@ -75,6 +75,8 @@ class NewMessage(EventBuilder):
         self.from_users = from_users
         self.forwards = forwards
         if isinstance(pattern, str):
+            if len(pattern) > 1000:
+                raise ValueError('Pattern too long (max 1000 characters)')
             self.pattern = re.compile(pattern).match
         elif not pattern or callable(pattern):
             self.pattern = pattern

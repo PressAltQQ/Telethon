@@ -1,2 +1,2 @@
-pyaes
-rsa
+pyaes==1.6.1
+rsa==4.9

@@ -1,5 +1,5 @@
-cryptg
-python-socks[asyncio]
-hachoir
-pillow
-isal
+cryptg>=0.4.0
+python-socks[asyncio]>=2.0.0
+hachoir>=3.2.0
+pillow>=10.0.0
+isal>=1.0.0

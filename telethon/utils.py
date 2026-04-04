@@ -667,7 +667,7 @@ def _get_metadata(file):
         return hachoir.metadata.extractMetadata(parser)
 
     except Exception as e:
-        _log.warning('Failed to analyze %s: %s %s', file, e.__class__, e)
+        _log.warning('Failed to parse file metadata')
 
     finally:
         if stream and close_stream:

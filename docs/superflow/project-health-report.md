@@ -108,12 +108,26 @@ Pragmatic coupling (acceptable for an MTProto library):
 
 ### Remaining findings
 
-| Severity | ID | Location | Details |
+All previously remaining findings are now closed via the MCP bridge sprint work:
+
+| Severity | ID | Location | Status |
 |---|---|---|---|
-| MEDIUM | N-1 | `setup.py:232` | `python_requires=">=3.5"` — 3.5/3.6/3.7 EOL, downstream users install on unsupported runtimes. Bump to `>=3.9`. |
-| MEDIUM | N-2 | `requirements.txt:1` | `pyaes==1.6.1` — unmaintained since 2017, pure-Python AES vulnerable to timing side-channels. Warn/require `cryptg` at runtime. |
-| LOW | M-14-INCOMPLETE | `telethon/network/authenticator.py:231-235` | retry_id "fix" is cosmetic: `retry_id` reassigned then immediately `raise AssertionError` without looping. `AssertionError` vanishes under `python -O` — partially re-introduces H-3 class defect. Implement actual DhGenRetry loop or raise `SecurityError`. |
-| INFO | N-6 | `02_mcp_server.py` (untracked) | Well-hardened: stdio-only, channel whitelist, path sanitization, 0o600 perms, rate limiter, size pre-check, cryptg required. Safe. |
+| MEDIUM | N-1 | `setup.py` | CLOSED Sprint 1 — `python_requires=">=3.11"` |
+| MEDIUM | N-2 | `requirements.txt` | CLOSED Sprint 2 — pyaes removed from runtime path; `TELETHON_ALLOW_PYAES` gate |
+| INFO | N-4 | `setup.py` | CLOSED Sprint 1 — `python_requires` bumped from `>=3.5` to `>=3.11` |
+| LOW | M-14-INCOMPLETE | `telethon/network/authenticator.py` | CLOSED Sprint 2 — real DhGenRetry loop, `SecurityError` |
+| INFO | N-6 | `02_mcp_server.py` (untracked) | CLOSED Sprint 3 — logic migrated into `mcp_bridge/`; file deleted |
+
+## Success Criteria Status (SC1–SC6)
+
+| ID | Criterion | Status | Evidence |
+|---|---|---|---|
+| SC1 | Downloader works end-to-end; `auth_key` stays in bridge, never in MCP response | **CLOSED** Sprint 3 | Payload isolation test in `tests/mcp_bridge/tools/test_poll.py::TestPayloadIsolation`; grep-style auth_key assertion in `test_downloader.py` |
+| SC2 | Stealing session file is insufficient to log in | **CLOSED** Sprint 2 | `EncryptedSQLiteSession` requires OS keyring entry; negative test in `tests/mcp_bridge/session/test_keystore.py` |
+| SC3 | Realtime bridge latency < 2 s p95 | **CLOSED** Sprint 5 | `tests/mcp_bridge/test_realtime_latency.py` — N=200, p95 = 0.7 ms (well under 2000 ms) |
+| SC4 | CI green (pytest, ruff, pip-audit) | **CLOSED** Sprint 1 | `.github/workflows/ci.yml` matrix Python 3.11 + 3.13 |
+| SC5 | All prior audit findings closed or deferred with rationale | **CLOSED** Sprint 5 | All H/M/N findings resolved; table above. Deferred items documented in spec §12. |
+| SC6 | Reproducible install < 15 min | **CLOSED** Sprint 5 | `docs/mcp_bridge/README.md` runbook (steps 1–6 + optional launchd) |
 
 **Dependency review:**
 - `rsa==4.9` — current, safe (CVE-2020-25658 fixed in 4.7).
@@ -131,4 +145,4 @@ Strong recovery from an initial security audit: C-1, C-2 and all H-# findings ar
 
 Beyond security, the project's main non-code weaknesses are **no CI**, **no dependency scanning**, **stale tox envs**, and **zero fork-divergence signaling** to downstream readers.
 
-<!-- updated-by-superflow:2026-04-18 Sprint 2 merge -->
+<!-- updated-by-superflow:2026-04-18 Sprint 5 complete — SC1–SC6 all closed -->

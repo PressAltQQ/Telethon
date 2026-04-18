@@ -36,4 +36,9 @@ htmlcov/
 # Exception: MCP bridge evidence & runbooks (committed, not Sphinx build output)
 !docs/mcp_bridge/
 !docs/mcp_bridge/**
+# Exception: Superflow plans/specs/health report (committed governance docs)
+!docs/superflow/
+!docs/superflow/**
+# Exception: Upstream sync procedure
+!docs/UPSTREAM_SYNC.md
 .par-evidence.json

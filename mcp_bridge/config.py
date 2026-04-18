@@ -65,6 +65,7 @@ class Config:
     # [bridge] section
     ask_fallback: str = "strict"  # "strict" | "user_scoped" | "chat_scoped"
     fallback_window_seconds: int = 120
+    poll_buffer_size: int = 256
 
     # Optional session fields
     session_path: Path | None = None
@@ -248,6 +249,11 @@ def load_config(path: Path | None = None) -> Config:
             f"got {ask_fallback!r}"
         )
     fallback_window_seconds = int(bridge_cfg.get("fallback_window_seconds", 120))
+    poll_buffer_size = int(bridge_cfg.get("poll_buffer_size", 256))
+    if poll_buffer_size < 1:
+        raise ConfigInvalidError(
+            f"[bridge] poll_buffer_size must be >= 1; got {poll_buffer_size}"
+        )
 
     max_ops_per_minute = int(rate_limit.get("max_ops_per_minute", 30))
     burst = int(rate_limit.get("burst", 5))
@@ -281,6 +287,7 @@ def load_config(path: Path | None = None) -> Config:
         log_file=log_file,
         ask_fallback=ask_fallback,
         fallback_window_seconds=fallback_window_seconds,
+        poll_buffer_size=poll_buffer_size,
         session_path=session_path,
     )
 

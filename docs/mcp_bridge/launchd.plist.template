@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS launchd user agent template for the Telethon MCP Bridge.
+
+  Instructions:
+  1. Copy to ~/Library/LaunchAgents/com.user.telethon-mcp-bridge.plist
+  2. Replace all {{PLACEHOLDER}} values:
+       {{VENV_BIN}}    — absolute path to .venv/bin  (e.g. /Users/you/Telethon/.venv/bin)
+       {{CONFIG_PATH}} — absolute path to config.toml (e.g. /Users/you/.config/telethon-mcp-bridge/config.toml)
+       {{LOG_PATH}}    — absolute path for stdout/stderr log (e.g. /Users/you/.local/state/telethon-mcp-bridge/launchd.log)
+  3. Ensure the log directory exists: mkdir -p $(dirname {{LOG_PATH}})
+  4. Load: launchctl load ~/Library/LaunchAgents/com.user.telethon-mcp-bridge.plist
+  5. Verify: launchctl list | grep telethon-mcp-bridge
+  6. Unload: launchctl unload ~/Library/LaunchAgents/com.user.telethon-mcp-bridge.plist
+
+  Note: This runs the bridge as a long-lived daemon. The MCP client (Claude Code)
+  connects over stdio, which means each new Claude Code session spawns a new
+  bridge process. The launchd unit keeps the process alive and restarts it if
+  it crashes. KeepAlive is set to false because the bridge exits normally when
+  the stdio pipe closes (Claude Code session ends).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.user.telethon-mcp-bridge</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{VENV_BIN}}/python</string>
+    <string>-m</string>
+    <string>mcp_bridge</string>
+    <string>--config</string>
+    <string>{{CONFIG_PATH}}</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{VENV_BIN}}/..</string>
+
+  <!-- Restart if the process crashes (exit code != 0) -->
+  <key>KeepAlive</key>
+  <dict>
+    <key>Crashed</key>
+    <true/>
+  </dict>
+
+  <!-- Throttle restarts: wait 10 seconds before restarting -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <!-- Redirect stdout and stderr to a log file -->
+  <key>StandardOutPath</key>
+  <string>{{LOG_PATH}}</string>
+  <key>StandardErrorPath</key>
+  <string>{{LOG_PATH}}</string>
+
+  <!-- Run at load time (not on a schedule) -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <!-- Environment variables (add more as needed) -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- Uncomment and set if using env-var key source instead of keyring -->
+    <!-- <key>TELETHON_SESSION_KEY</key> -->
+    <!-- <string>your_base64_key_here</string> -->
+    <!-- <key>TELETHON_SESSION_SALT</key> -->
+    <!-- <string>your_base64_salt_here</string> -->
+
+    <!-- Set to 1 to enable verbose MCP protocol logging (DEBUG level) -->
+    <!-- <key>TELETHON_MCP_DEBUG_PROTOCOL</key> -->
+    <!-- <string>0</string> -->
+  </dict>
+</dict>
+</plist>

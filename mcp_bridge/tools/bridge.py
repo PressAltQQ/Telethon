@@ -105,6 +105,23 @@ async def ask_user(
     rate_limiter = get_rate_limiter(config)
     await rate_limiter.acquire()
 
+    # Send FIRST so we have message_id before inserting the pending row.
+    # If send fails, no orphaned pending row is created in the DB.
+    try:
+        message = await client.send_message(chat_id, text)
+    except Exception as exc:
+        translated = _translate_telethon_error(exc)
+        translated_code = getattr(translated, "CODE", type(translated).__name__)
+        __log__.warning(
+            "ask_user send_message failed for chat_id=%s: %s",
+            chat_id, exc,
+        )
+        raise AskSendFailedError(
+            f"send_message failed for chat_id={chat_id}: {translated_code}",
+        ) from exc
+
+    msg_id = getattr(message, "id", None)
+
     ask_token = correlation.insert_pending(
         chat_id=chat_id,
         text=text,
@@ -112,17 +129,6 @@ async def ask_user(
         target_user_id=target_user_id,
     )
 
-    try:
-        message = await client.send_message(chat_id, text)
-    except Exception as exc:
-        correlation.record_send_failed(ask_token, str(exc))
-        translated = _translate_telethon_error(exc)
-        bridge_exc = AskSendFailedError(
-            f"send_message failed for ask_token={ask_token}: {translated}",
-        )
-        raise bridge_exc from exc
-
-    msg_id = getattr(message, "id", None)
     if msg_id is not None:
         correlation.record_send_success(ask_token, msg_id)
 

@@ -27,10 +27,19 @@ install runbook including first-run session setup.
 MCP Bridge
 ----------
 
-The ``mcp_bridge/`` package (added across sprints 3-5) exposes Telethon via
-MCP stdio for personal automation use. It is not part of the public Telethon
-API surface. See ``docs/mcp_bridge/README.md`` for configuration and running
-instructions.
+The ``mcp_bridge/`` package exposes Telethon via MCP stdio for personal
+automation use. It is not part of the public Telethon API surface.
+
+Tools provided:
+
+- ``list_channel_files`` — list documents in whitelisted channels
+- ``download_file`` — download a file by channel + message ID (idempotent)
+- ``send_message`` — send text to a whitelisted chat
+- ``ask_user`` — blocking Q&A with reply correlation
+- ``poll_chat_since`` — long-poll for new messages (realtime, < 2 s p95)
+
+See ``docs/mcp_bridge/README.md`` for the full install runbook (SC6: < 15 min
+setup on a fresh machine) and configuration reference.
 
 Note: ``telethon.sync`` is not supported in this fork and may be removed in
 a future sprint.

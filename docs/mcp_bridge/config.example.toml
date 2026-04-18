@@ -1,0 +1,98 @@
+# Telethon MCP Bridge — Example Configuration
+#
+# Copy to ~/.config/telethon-mcp-bridge/config.toml
+# then: chmod 600 ~/.config/telethon-mcp-bridge/config.toml
+#
+# The bridge REQUIRES 0o600 permissions and will refuse to start otherwise.
+# Never commit this file with real credentials.
+
+[telegram]
+# Your API ID from https://my.telegram.org/auth
+api_id = 12345
+
+# Your API hash. Alternatively, set TELETHON_API_HASH env var to keep it
+# out of config files entirely.
+api_hash = "your_api_hash_here"
+
+# Session file basename (no extension). Stored in [session] key_source path.
+session_name = "main"
+
+[session]
+# Where the session encryption key is stored.
+# "keyring" — macOS Keychain / Linux Secret Service (default, recommended)
+# "env"     — TELETHON_SESSION_KEY + TELETHON_SESSION_SALT env vars (headless)
+key_source = "keyring"
+
+# Service name in the OS keyring. Change only if you need multiple bridge
+# instances with separate keys.
+keyring_service = "telethon-mcp-bridge"
+
+[downloader]
+# Absolute path where downloaded files are stored.
+# Will be created if absent. Must be on a local (non-NFS/SMB) filesystem.
+base_dir = "~/telethon-downloads"
+
+# Maximum file size to download in megabytes (0 = unlimited, not recommended).
+max_file_size_mb = 100
+
+# MIME type allowlist. Glob patterns. Downloads of other types are rejected
+# with UNSUPPORTED_MIME.
+allowed_mime_types = [
+  "application/pdf",
+  "image/*",
+  "document/*",
+]
+
+# MIME type denylist. Evaluated after allowlist. Matching types are rejected.
+denied_mime_types = [
+  "video/*",
+]
+
+# Seconds to wait for the download semaphore before returning RATE_LIMIT.
+# At most 1 concurrent download is allowed per daemon.
+concurrent_queue_wait_seconds = 2.0
+
+[whitelist]
+# Channel IDs accessible to list_channel_files / download_file.
+# Use negative IDs for channels (e.g. -100123456789).
+channels = []
+
+# Chat IDs the bridge may read incoming messages from (poll_chat_since).
+read_chats = []
+
+# Chat IDs the bridge may send messages to (send_message).
+write_chats = []
+
+# Chat IDs ask_user may target.
+ask_chats = []
+
+[bridge]
+# Per-chat ring buffer size for poll_chat_since. Messages older than
+# (oldest_id - poll_buffer_size) cause POLL_CURSOR_LOST.
+poll_buffer_size = 256
+
+# Reply matching strategy for ask_user.
+# "strict"      — primary reply match only (reply_to_msg_id must match)
+# "user_scoped" — also match first message from target_user within fallback window
+# "chat_scoped" — also match first message from any non-self user in the chat
+ask_fallback = "strict"
+
+# Seconds after ask_user send within which fallback matching applies.
+fallback_window_seconds = 120
+
+[rate_limit]
+# Token bucket for outbound Telethon API calls.
+# Sustained rate: ops per minute.
+max_ops_per_minute = 30
+
+# Burst capacity (tokens above the sustained rate allowed at once).
+burst = 5
+
+[logging]
+# Log level for the bridge's own logger.
+# DEBUG shows tool arguments (chat IDs hashed) and all internal state.
+# INFO is recommended for production.
+level = "INFO"
+
+# Log file path. JSON-lines format. Rotated at 10 MiB.
+file = "~/.local/state/telethon-mcp-bridge/bridge.log"

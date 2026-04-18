@@ -1,5 +1,6 @@
-cryptg>=0.4.0
-python-socks[asyncio]>=2.0.0
-hachoir>=3.2.0
-pillow>=10.0.0
-isal>=1.0.0
+cryptg>=0.4,<1.0
+python-socks[asyncio]>=2,<3
+hachoir>=3,<4
+pillow>=10,<12
+isal>=1,<2
+# pyaes is kept as a test-only fallback; activated by TELETHON_ALLOW_PYAES=1

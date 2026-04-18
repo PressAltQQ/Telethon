@@ -3,6 +3,34 @@ branch = true
 parallel = true
 source =
     telethon
+    mcp_bridge
+omit =
+    telethon/tl/*
+    telethon/errors/rpcerrorlist.py
+    telethon_examples/*
+    readthedocs/*
 
 [report]
 precision = 2
+# Starting floor; raised incrementally as sprints land tests. Spec target
+# is 55% but current baseline hand-written coverage is ~23%. Sprint 2+
+# must not regress this number; Sprint 5 should raise it toward 55%.
+fail_under = 20
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if TYPE_CHECKING:
+
+[paths]
+mcp_bridge =
+    mcp_bridge/
+
+telethon_crypto =
+    telethon/crypto/
+
+telethon_authenticator =
+    telethon/network/authenticator.py
+
+telethon_sessions =
+    telethon/sessions/

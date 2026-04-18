@@ -3,34 +3,57 @@
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
-# Need to use legacy format for the time being
-# https://tox.readthedocs.io/en/3.20.0/example/basic.html#pyproject-toml-tox-legacy-ini
-[tool.tox]
-legacy_tox_ini = """
-[tox]
-envlist = py35,py36,py37,py38
+[project]
+name = "Telethon"
+dynamic = ["version"]
+readme = "README.rst"
+requires-python = ">=3.11"
+dependencies = [
+    "pyaes==1.6.1",
+    "rsa==4.9",
+]
 
-# run with tox -e py
-[testenv]
-deps =
-    -rrequirements.txt
-    -roptional-requirements.txt
-    -rdev-requirements.txt
-commands =
-    # NOTE: you can run any command line tool here - not just tests
-    pytest {posargs}
+[tool.setuptools.dynamic]
+version = {attr = "telethon.version.__version__"}
 
-# run with tox -e flake
-[testenv:flake]
-deps =
-    -rrequirements.txt
-    -roptional-requirements.txt
-    -rdev-requirements.txt
-    flake8
-commands =
-    # stop the build if there are Python syntax errors or undefined names
-    flake8 telethon/ telethon_generator/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
-    # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-    flake8 telethon/ telethon_generator/ tests/ --count --exit-zero --exclude telethon/tl/,telethon/errors/rpcerrorlist.py --max-complexity=10 --max-line-length=127 --statistics
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<9",
+    "pytest-asyncio>=0.23,<1",
+    "pytest-cov>=5,<7",
+    "pyaes==1.6.1",
+    "ruff",
+]
 
-"""
+[tool.ruff]
+line-length = 127
+target-version = "py311"
+# Exclude pre-existing Telethon source dirs from lint enforcement.
+# CI enforces lint only on Sprint-1-touched files and future mcp_bridge/.
+# Future sprints may narrow this list as they add linted code.
+exclude = [
+    "telethon/",
+    "telethon_generator/",
+    "telethon_examples/",
+    "tests/",
+    "readthedocs/",
+]
+
+# Format style is advisory only — not enforced in CI.
+# Developers may run `ruff format` locally if desired, but it is not required.
+[tool.ruff.format]
+quote-style = "preserve"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# setup.py: pre-existing style issues (not in exclude list above)
+"setup.py" = ["E731", "F841"]
+
+[tool.pytest.ini_options]
+markers = [
+    "live: tests requiring TELETHON_LIVE_TESTS=1",
+    "slow: long-running tests",
+]
+asyncio_mode = "auto"

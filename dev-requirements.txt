@@ -1,3 +1,4 @@
-pytest
-pytest-cov
-pytest-asyncio
+pytest>=8,<9
+pytest-asyncio>=0.23,<1
+pytest-cov>=5,<7
+pyaes==1.6.1

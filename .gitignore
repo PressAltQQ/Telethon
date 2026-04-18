@@ -21,3 +21,19 @@ __pycache__/
 
 # File used to manually test new changes, contains sensitive data
 /example.py
+
+# MCP bridge runtime artifacts
+*.key.enc
+mcp_bridge_config.toml
+downloads/
+*.log
+.coverage
+htmlcov/
+
+# Worktrees (managed by git-worktree, not tracked)
+.worktrees/
+
+# Exception: MCP bridge evidence & runbooks (committed, not Sphinx build output)
+!docs/mcp_bridge/
+!docs/mcp_bridge/**
+.par-evidence.json

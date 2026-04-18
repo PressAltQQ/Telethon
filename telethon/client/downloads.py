@@ -3,6 +3,7 @@ import io
 import os
 import pathlib
 import typing
+import unicodedata
 import inspect
 import asyncio
 
@@ -26,6 +27,62 @@ MAX_CHUNK_SIZE = 512 * 1024
 
 # 2021-01-15, users reported that `errors.TimeoutError` can occur while downloading files.
 TIMED_OUT_SLEEP = 1
+
+# Windows reserved device names (case-insensitive prefix match).
+_WINDOWS_RESERVED_NAMES = {
+    'CON', 'PRN', 'AUX', 'NUL',
+    'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
+    'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9',
+}
+
+
+def _safe_join(base_dir: pathlib.Path, untrusted_name: str) -> pathlib.Path:
+    """Safely join base_dir with an untrusted filename (N-5 defense-in-depth).
+
+    Normalises separators and ``..`` components into filename characters;
+    raises ValueError only when the final resolved path falls outside
+    ``base_dir``.  This is sanitise-then-confine, not strict rejection.
+    """
+    # Unicode normalisation — map visually-similar chars to canonical form.
+    name = unicodedata.normalize('NFKC', untrusted_name)
+
+    # Strip null bytes.
+    name = name.replace('\x00', '')
+
+    # Replace path separators with underscores to prevent directory traversal.
+    name = name.replace('/', '_').replace('\\', '_')
+
+    # Reject / rewrite Windows reserved device names (e.g. CON, NUL, COM1).
+    # Match the bare name or name + extension (e.g. CON.txt).
+    stem, _, ext = name.partition('.')
+    if stem.upper() in _WINDOWS_RESERVED_NAMES:
+        name = '_reserved_' + name
+
+    # Truncate to 120 chars preserving the extension.
+    if len(name) > 120:
+        _, _, ext_part = name.rpartition('.')
+        if ext_part and len(ext_part) < len(name):
+            # Keep the extension, truncate the stem.
+            ext_with_dot = '.' + ext_part
+            stem_part = name[: 120 - len(ext_with_dot)]
+            name = stem_part + ext_with_dot
+        else:
+            name = name[:120]
+
+    safe = base_dir / name
+    try:
+        resolved_safe = safe.resolve()
+        resolved_base = base_dir.resolve()
+    except OSError:
+        raise ValueError('path escape attempt: could not resolve path')
+
+    # Verify the resolved path is inside base_dir.
+    try:
+        resolved_safe.relative_to(resolved_base)
+    except ValueError:
+        raise ValueError('path escape attempt: {} is outside {}'.format(safe, base_dir))
+
+    return resolved_safe
 
 
 class _CdnRedirect(Exception):
@@ -1071,7 +1128,11 @@ class DownloadMethods:
                     date.year, date.month, date.day,
                     date.hour, date.minute, date.second,
                 )
-            file = os.path.join(file, name)
+            # N-5 defense-in-depth: use _safe_join to block path-traversal via
+            # attacker-controlled filenames in Telegram message document attributes.
+            # Pre-change line: file = os.path.join(file, name) (was line 1074,
+            # now line 1133 after _safe_join helper was inserted above).
+            file = str(_safe_join(pathlib.Path(file), name))
 
         directory, name = os.path.split(file)
         name, ext = os.path.splitext(name)

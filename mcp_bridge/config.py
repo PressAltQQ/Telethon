@@ -62,6 +62,10 @@ class Config:
     log_level: str = "INFO"
     log_file: Path = field(default_factory=lambda: Path("~/.local/state/telethon-mcp-bridge/bridge.log").expanduser())
 
+    # [bridge] section
+    ask_fallback: str = "strict"  # "strict" | "user_scoped" | "chat_scoped"
+    fallback_window_seconds: int = 120
+
     # Optional session fields
     session_path: Path | None = None
 
@@ -214,6 +218,7 @@ def load_config(path: Path | None = None) -> Config:
     whitelist = raw["whitelist"]
     rate_limit = raw["rate_limit"]
     logging_cfg = raw["logging"]
+    bridge_cfg = raw.get("bridge", {})
 
     # api_hash env override
     api_hash = os.environ.get("TELETHON_API_HASH") or telegram.get("api_hash", "")
@@ -236,6 +241,26 @@ def load_config(path: Path | None = None) -> Config:
         downloader.get("concurrent_queue_wait_seconds", 2.0)
     )
 
+    ask_fallback = bridge_cfg.get("ask_fallback", "strict")
+    if ask_fallback not in ("strict", "user_scoped", "chat_scoped"):
+        raise ConfigInvalidError(
+            f"[bridge] ask_fallback must be 'strict', 'user_scoped', or 'chat_scoped'; "
+            f"got {ask_fallback!r}"
+        )
+    fallback_window_seconds = int(bridge_cfg.get("fallback_window_seconds", 120))
+
+    max_ops_per_minute = int(rate_limit.get("max_ops_per_minute", 30))
+    burst = int(rate_limit.get("burst", 5))
+
+    if max_ops_per_minute < 1:
+        raise ConfigInvalidError(
+            f"[rate_limit] max_ops_per_minute must be >= 1; got {max_ops_per_minute}"
+        )
+    if burst < 1:
+        raise ConfigInvalidError(
+            f"[rate_limit] burst must be >= 1; got {burst}"
+        )
+
     config = Config(
         api_id=int(telegram["api_id"]),
         api_hash=api_hash,
@@ -249,11 +274,13 @@ def load_config(path: Path | None = None) -> Config:
         read_chats=list(whitelist.get("read_chats", [])),
         write_chats=list(whitelist.get("write_chats", [])),
         ask_chats=list(whitelist.get("ask_chats", [])),
-        max_ops_per_minute=int(rate_limit.get("max_ops_per_minute", 30)),
-        burst=int(rate_limit.get("burst", 5)),
+        max_ops_per_minute=max_ops_per_minute,
+        burst=burst,
         concurrent_queue_wait_seconds=concurrent_queue_wait,
         log_level=logging_cfg.get("level", "INFO"),
         log_file=log_file,
+        ask_fallback=ask_fallback,
+        fallback_window_seconds=fallback_window_seconds,
         session_path=session_path,
     )
 

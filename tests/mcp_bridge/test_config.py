@@ -233,3 +233,42 @@ class TestNFSCheck:
         mounts_text = "server:/export /home nfs rw 0 0\n"
         # This must not raise — /homer/foo does not start with /home/
         _check_mounts_text("/homer/foo", mounts_text)  # should not raise
+
+
+class TestRateLimitValidation:
+    def test_zero_max_ops_per_minute_rejected(self, tmp_path):
+        """max_ops_per_minute=0 must raise ConfigInvalidError."""
+        toml = VALID_TOML.replace("max_ops_per_minute = 30", "max_ops_per_minute = 0")
+        p = write_config(tmp_path, toml)
+        with pytest.raises(ConfigInvalidError, match="max_ops_per_minute"):
+            load_config(p)
+
+    def test_negative_max_ops_per_minute_rejected(self, tmp_path):
+        """max_ops_per_minute=-1 must raise ConfigInvalidError."""
+        toml = VALID_TOML.replace("max_ops_per_minute = 30", "max_ops_per_minute = -1")
+        p = write_config(tmp_path, toml)
+        with pytest.raises(ConfigInvalidError, match="max_ops_per_minute"):
+            load_config(p)
+
+    def test_zero_burst_rejected(self, tmp_path):
+        """burst=0 must raise ConfigInvalidError."""
+        toml = VALID_TOML.replace("burst = 5", "burst = 0")
+        p = write_config(tmp_path, toml)
+        with pytest.raises(ConfigInvalidError, match="burst"):
+            load_config(p)
+
+    def test_negative_burst_rejected(self, tmp_path):
+        """burst=-1 must raise ConfigInvalidError."""
+        toml = VALID_TOML.replace("burst = 5", "burst = -1")
+        p = write_config(tmp_path, toml)
+        with pytest.raises(ConfigInvalidError, match="burst"):
+            load_config(p)
+
+    def test_valid_rate_limit_values_accepted(self, tmp_path):
+        """max_ops_per_minute=1 and burst=1 are the minimum valid values."""
+        toml = VALID_TOML.replace("max_ops_per_minute = 30", "max_ops_per_minute = 1")
+        toml = toml.replace("burst = 5", "burst = 1")
+        p = write_config(tmp_path, toml)
+        cfg = load_config(p)
+        assert cfg.max_ops_per_minute == 1
+        assert cfg.burst == 1

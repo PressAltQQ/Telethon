@@ -241,7 +241,7 @@ def main(argv):
             ],
             keywords="telegram api chat client library messaging mtproto",
             packages=find_packages(exclude=["telethon_*", "tests*"]),
-            install_requires=["rsa", "pyaes"],
+            install_requires=["rsa", "cryptography>=42,<46"],
             extras_require={"cryptg": ["cryptg"]},
         )
 

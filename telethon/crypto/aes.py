@@ -3,27 +3,53 @@ AES IGE implementation in Python.
 
 If available, cryptg will be used instead, otherwise
 if available, libssl will be used instead, otherwise
-the Python implementation will be used.
+the Python implementation will be used (only when TELETHON_ALLOW_PYAES=1).
 """
 import os
-import pyaes
 import logging
 from . import libssl
 
 
 __log__ = logging.getLogger(__name__)
 
+# Track whether we have already warned about pyaes fallback in this process.
+_pyaes_warning_emitted = False
+
 
 try:
     import cryptg
+    _USING_CRYPTG = True
     __log__.info('cryptg detected, it will be used for encryption')
 except ImportError:
     cryptg = None
+    _USING_CRYPTG = False
     if libssl.encrypt_ige and libssl.decrypt_ige:
         __log__.info('libssl detected, it will be used for encryption')
     else:
         __log__.info('cryptg module not installed and libssl not found, '
-                     'falling back to (slower) Python encryption')
+                     'will use software fallback if TELETHON_ALLOW_PYAES=1')
+
+
+def _get_software_aes():
+    """Return the pyaes module for software AES fallback.
+
+    Only permitted when TELETHON_ALLOW_PYAES=1 (test environments).
+    Emits a WARNING on the first call to signal unintended runtime use.
+    Raises ImportError if the env var is not set (production guard).
+    """
+    global _pyaes_warning_emitted
+    if os.environ.get("TELETHON_ALLOW_PYAES") == "1":
+        if not _pyaes_warning_emitted:
+            __log__.warning(
+                "pyaes fallback active — intended for tests only"
+            )
+            _pyaes_warning_emitted = True
+        import pyaes  # noqa: PLC0415
+        return pyaes
+    raise ImportError(
+        "cryptg is required for runtime use; "
+        "set TELETHON_ALLOW_PYAES=1 only in test environments"
+    )
 
 
 class AES:
@@ -41,6 +67,8 @@ class AES:
             return cryptg.decrypt_ige(cipher_text, key, iv)
         if libssl.decrypt_ige:
             return libssl.decrypt_ige(cipher_text, key, iv)
+
+        pyaes = _get_software_aes()
 
         iv1 = iv[:len(iv) // 2]
         iv2 = iv[len(iv) // 2:]
@@ -82,6 +110,8 @@ class AES:
             return cryptg.encrypt_ige(plain_text, key, iv)
         if libssl.encrypt_ige:
             return libssl.encrypt_ige(plain_text, key, iv)
+
+        pyaes = _get_software_aes()
 
         iv1 = iv[:len(iv) // 2]
         iv2 = iv[len(iv) // 2:]

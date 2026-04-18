@@ -1,2 +1,2 @@
-pyaes==1.6.1
+cryptography>=42,<46
 rsa==4.9

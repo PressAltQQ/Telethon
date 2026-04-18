@@ -1,7 +1,35 @@
 """
 This module holds the AESModeCTR wrapper class.
 """
-import pyaes
+import os
+import logging
+
+__log__ = logging.getLogger(__name__)
+
+# Track whether we have already warned about pyaes fallback in this process.
+_pyaes_warning_emitted = False
+
+
+def _get_software_aes():
+    """Return the pyaes module for software AES fallback.
+
+    Only permitted when TELETHON_ALLOW_PYAES=1 (test environments).
+    Emits a WARNING on the first call to signal unintended runtime use.
+    Raises ImportError if the env var is not set (production guard).
+    """
+    global _pyaes_warning_emitted
+    if os.environ.get("TELETHON_ALLOW_PYAES") == "1":
+        if not _pyaes_warning_emitted:
+            __log__.warning(
+                "pyaes fallback active — intended for tests only"
+            )
+            _pyaes_warning_emitted = True
+        import pyaes  # noqa: PLC0415
+        return pyaes
+    raise ImportError(
+        "cryptg is required for runtime use; "
+        "set TELETHON_ALLOW_PYAES=1 only in test environments"
+    )
 
 
 class AESModeCTR:
@@ -15,7 +43,7 @@ class AESModeCTR:
         :param key: the key to be used as bytes.
         :param iv: the bytes initialization vector. Must have a length of 16.
         """
-        # TODO Use libssl if available
+        pyaes = _get_software_aes()
         assert isinstance(key, bytes)
         self._aes = pyaes.AESModeOfOperationCTR(key)
 

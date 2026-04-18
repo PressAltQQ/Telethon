@@ -190,36 +190,66 @@ async def do_authentication(sender):
     # Encryption
     client_dh_encrypted = AES.encrypt_ige(client_dh_inner_hashed, key, iv)
 
-    # Prepare Set client DH params
-    dh_gen = await sender.send(SetClientDHParamsRequest(
-        nonce=res_pq.nonce,
-        server_nonce=res_pq.server_nonce,
-        encrypted_data=client_dh_encrypted,
-    ))
-
-    nonce_types = (DhGenOk, DhGenRetry, DhGenFail)
-    if not isinstance(dh_gen, nonce_types):
-        raise SecurityError('Step 3.1 answer was %s' % dh_gen)
-    name = dh_gen.__class__.__name__
-    if dh_gen.nonce != res_pq.nonce:
-        raise SecurityError('Step 3 invalid {} nonce from server'.format(name))
-
-    if dh_gen.server_nonce != res_pq.server_nonce:
-        raise SecurityError(
-            'Step 3 invalid {} server nonce from server'.format(name))
-
+    # Step 3.1: Set client DH params — retry loop for DhGenRetry (M-14 fix).
+    # Telegram may respond with DhGenRetry when the proposed g_b does not meet
+    # server-side DH constraints. We retry up to MAX_DH_RETRIES times with a
+    # fresh b each iteration. DhGenFail is always fatal. After exhausting
+    # retries we raise SecurityError to give callers a typed, descriptive
+    # failure they can handle (replaces the old bare assert/raise pattern).
+    MAX_DH_RETRIES = 5
     auth_key = AuthKey(rsa.get_byte_array(gab))
-    nonce_number = 1 + nonce_types.index(type(dh_gen))
-    new_nonce_hash = auth_key.calc_new_nonce_hash(new_nonce, nonce_number)
+    nonce_types = (DhGenOk, DhGenRetry, DhGenFail)
 
-    dh_hash = getattr(dh_gen, 'new_nonce_hash{}'.format(nonce_number))
-    if dh_hash != new_nonce_hash:
-        raise SecurityError('Step 3 invalid new nonce hash')
+    for attempt in range(1, MAX_DH_RETRIES + 1):
+        dh_gen = await sender.send(SetClientDHParamsRequest(
+            nonce=res_pq.nonce,
+            server_nonce=res_pq.server_nonce,
+            encrypted_data=client_dh_encrypted,
+        ))
 
-    if not isinstance(dh_gen, DhGenOk):
-        raise AssertionError('Step 3.2 answer was %s' % dh_gen)
+        if not isinstance(dh_gen, nonce_types):
+            raise SecurityError('Step 3.1 answer was %s' % dh_gen)
 
-    return auth_key, time_offset
+        name = dh_gen.__class__.__name__
+        if dh_gen.nonce != res_pq.nonce:
+            raise SecurityError('Step 3 invalid {} nonce from server'.format(name))
+
+        if dh_gen.server_nonce != res_pq.server_nonce:
+            raise SecurityError(
+                'Step 3 invalid {} server nonce from server'.format(name))
+
+        nonce_number = 1 + nonce_types.index(type(dh_gen))
+        new_nonce_hash = auth_key.calc_new_nonce_hash(new_nonce, nonce_number)
+        dh_hash = getattr(dh_gen, 'new_nonce_hash{}'.format(nonce_number))
+        if dh_hash != new_nonce_hash:
+            raise SecurityError('Step 3 invalid new nonce hash')
+
+        if isinstance(dh_gen, DhGenOk):
+            return auth_key, time_offset
+
+        if isinstance(dh_gen, DhGenFail):
+            raise SecurityError(
+                'Step 3.2 server returned DhGenFail on attempt {}'.format(attempt)
+            )
+
+        # DhGenRetry — regenerate b, g_b, gab and re-encrypt for the next attempt.
+        b = get_int(os.urandom(256), signed=False)
+        g_b = pow(g, b, dh_prime)
+        gab = pow(g_a, b, dh_prime)
+        auth_key = AuthKey(rsa.get_byte_array(gab))
+
+        client_dh_inner = bytes(ClientDHInnerData(
+            nonce=res_pq.nonce,
+            server_nonce=res_pq.server_nonce,
+            retry_id=0,
+            g_b=rsa.get_byte_array(g_b)
+        ))
+        client_dh_inner_hashed = sha1(client_dh_inner).digest() + client_dh_inner
+        client_dh_encrypted = AES.encrypt_ige(client_dh_inner_hashed, key, iv)
+
+    raise SecurityError(
+        'Step 3.2 DhGenRetry exhausted after {} attempts'.format(MAX_DH_RETRIES)
+    )
 
 
 def get_int(byte_array, signed=True):

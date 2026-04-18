@@ -1,15 +1,17 @@
 """
-SC3 latency test scaffold — Sprint 4.
+SC3 latency test — Sprint 5 (complete).
 
-This file contains the scaffolding for the realtime latency test.
-Sprint 5 will:
-  - Remove the skip marker
-  - Increase N to 200
-  - Add the ``assert p95 < 2000`` assertion
-  - Wire the full update-handler long-poll loop
+Measures p50/p95/p99 roundtrip latency through poll_chat_since
+using poll.ingest_message as the injection point.
 
-The scaffold MUST import cleanly and the marked test must be skipped
-(not errored) when collected by pytest.
+N=200 messages, each trial starts a poll task BEFORE injecting so the
+measurement covers the real asyncio Condition wakeup path, not the fast-path
+short-circuit (message already buffered).
+
+Assertion: p95 < 2000 ms.
+Histogram printed on failure.
+
+The test is marked @pytest.mark.slow — runs in the slow lane.
 """
 from __future__ import annotations
 
@@ -19,71 +21,82 @@ from types import SimpleNamespace
 
 import pytest
 
-from mcp_bridge.correlation import Correlation
+from mcp_bridge.tools import poll
+
+
+@pytest.fixture(autouse=True)
+def reset_poll_state():
+    poll.reset_state()
+    poll.set_buffer_size(512)
+    yield
+    poll.reset_state()
+    poll.set_buffer_size(256)
+
+
+def make_config():
+    return SimpleNamespace(
+        read_chats=[5001],
+        poll_buffer_size=512,
+    )
+
+
+def make_metadata(msg_id: int) -> dict:
+    return {
+        "message_id": msg_id,
+        "from_id": 1,
+        "text": f"msg-{msg_id}",
+        "reply_to_msg_id": None,
+        "date": "2026-01-01T00:00:00",
+        "has_media": False,
+        "media_summary": None,
+    }
 
 
 @pytest.mark.slow
-@pytest.mark.skip(reason="Sprint 5 completes the SC3 assertion and increases N to 200")
-async def test_sc3_roundtrip_latency_p95(tmp_path):
-    """Measure p50/p95/p99 roundtrip through match_reply → wait_for_reply.
+@pytest.mark.asyncio
+async def test_sc3_roundtrip_latency_p95():
+    """Measure p50/p95/p99 via real Condition wakeup path.
 
-    N=10 messages with random jitter. Sprint 5 raises N to 200 and adds
-    the ``assert p95 < 2000`` gate.
+    Each trial:
+    1. Start poll_chat_since task (no messages buffered yet — it will wait).
+    2. Yield with asyncio.sleep(0) so the poll task reaches cond.wait_for().
+    3. Inject the message — this notifies the condition.
+    4. Measure time from inject to task completion.
 
-    Measurement: t_inject_ns → t_notify_ns (bridge internal cost only;
-    no network / Telegram latency).
+    N=200. Assertion: p95 < 2000 ms.
     """
-    import datetime
-    import random
-
-    N = 10
-    db_path = str(tmp_path / "latency_corr.db")
-    corr = Correlation(db_path)
-    corr.open()
-
-    config = SimpleNamespace(ask_fallback="strict", fallback_window_seconds=120)
-    corr._config = config
+    N = 200
+    config = make_config()
+    chat_id = 5001
 
     latencies_ms: list[float] = []
 
-    async def inject_message(token: str, outbound_msg_id: int, chat_id: int) -> None:
-        jitter_ms = random.uniform(1, 50)  # reduced jitter for scaffold
-        await asyncio.sleep(jitter_ms / 1000)
-
-        t_inject_ns = time.monotonic_ns()
-
-        msg = SimpleNamespace(
-            id=outbound_msg_id + 1000,
-            text="reply",
-            message="reply",
-            reply_to_msg_id=outbound_msg_id,
-            from_id=999,
-            date=datetime.datetime.now(datetime.timezone.utc),
-            _t_inject_ns=t_inject_ns,
+    async def one_trial(msg_id: int, conn_id: str) -> float:
+        """Start poll BEFORE inject to exercise the cond.wait_for wakeup."""
+        # Start poll waiting for a message newer than msg_id - 1
+        poll_task = asyncio.create_task(
+            poll.poll_chat_since(
+                config=config,
+                chat_id=chat_id,
+                since_message_id=msg_id - 1,
+                timeout_ms=5000,
+                connection_id=conn_id,
+            )
         )
-        corr.match_reply(chat_id, msg)
+        # Yield so poll_task reaches cond.wait_for() before we inject
+        await asyncio.sleep(0)
 
-    tokens = []
-    for i in range(N):
-        chat_id = 1000 + i
-        token = corr.insert_pending(
-            chat_id=chat_id, text=f"q{i}", timeout_sec=10.0
-        )
-        corr.record_send_success(token, i + 1)
-        tokens.append((token, i + 1, chat_id))
+        t_inject = time.monotonic_ns()
+        poll.ingest_message(chat_id, make_metadata(msg_id))
+        result = await poll_task
+        t_notify = time.monotonic_ns()
 
-    async def measure_one(token: str, outbound_id: int, chat_id: int) -> float:
-        t_start = time.monotonic_ns()
-        inject_task = asyncio.ensure_future(inject_message(token, outbound_id, chat_id))
-        await corr.wait_for_reply(token, timeout_sec=5.0)
-        t_end = time.monotonic_ns()
-        await inject_task
-        return (t_end - t_start) / 1e6  # ns → ms
+        _ = result  # serialization point — latency measured up to here
+        return (t_notify - t_inject) / 1_000_000  # ns → ms
 
-    results = await asyncio.gather(
-        *[measure_one(t, mid, cid) for t, mid, cid in tokens]
-    )
-    latencies_ms = list(results)
+    for i in range(1, N + 1):
+        lat = await one_trial(i, conn_id=f"latency-{i}")
+        latencies_ms.append(lat)
 
     def percentile(data: list[float], pct: float) -> float:
         sorted_data = sorted(data)
@@ -94,8 +107,23 @@ async def test_sc3_roundtrip_latency_p95(tmp_path):
     p95 = percentile(latencies_ms, 95)
     p99 = percentile(latencies_ms, 99)
 
-    print(f"\nSC3 latency scaffold (N={N}): p50={p50:.1f}ms p95={p95:.1f}ms p99={p99:.1f}ms")
+    def build_histogram(data: list[float], buckets=10) -> str:
+        min_val = min(data)
+        max_val = max(data)
+        if min_val == max_val:
+            return f"[{min_val:.1f}ms: {len(data)}]"
+        bucket_size = (max_val - min_val) / buckets
+        hist: dict[str, int] = {}
+        for v in data:
+            bucket_idx = min(int((v - min_val) / bucket_size), buckets - 1)
+            lo = min_val + bucket_idx * bucket_size
+            hi = min_val + (bucket_idx + 1) * bucket_size
+            bucket_label = f"{lo:.0f}-{hi:.0f}ms"
+            hist[bucket_label] = hist.get(bucket_label, 0) + 1
+        return str(hist)
 
-    # Sprint 5 adds: assert p95 < 2000, "p95 latency exceeds 2000 ms SC3 contract"
+    hist = build_histogram(latencies_ms)
+    print(f"\nSC3 latency (N={N}): p50={p50:.1f}ms p95={p95:.1f}ms p99={p99:.1f}ms")
+    print(f"Histogram: {hist}")
 
-    corr.close()
+    assert p95 < 2000, f"p95 {p95:.1f} ms exceeds 2000 ms SC3 contract. histogram: {hist}"

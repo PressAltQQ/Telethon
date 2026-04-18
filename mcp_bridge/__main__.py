@@ -87,24 +87,72 @@ async def _run(args) -> int:
             file=sys.stderr,
         )
 
-    # 3. Start client
+    # 2b. --migrate-to-encrypted: one-shot migration, then exit
+    if args.migrate_to_encrypted:
+        try:
+            from mcp_bridge.session.encrypted_sqlite import EncryptedSQLiteSession
+            session_path = config.session_path or (
+                config.base_dir / f"{config.session_name}.session"
+            )
+            EncryptedSQLiteSession.migrate_from_plaintext(str(session_path), config.session_name)
+            print("Migration to encrypted session complete. Re-run without --migrate-to-encrypted.")
+            return 0
+        except Exception as exc:
+            print(f"Migration failed: {exc}", file=sys.stderr)
+            return 2
+
+    # 2c. --first-run: interactive Telethon login, then exit
+    if args.first_run:
+        try:
+            from mcp_bridge.session.encrypted_sqlite import EncryptedSQLiteSession
+            from telethon import TelegramClient
+
+            session_path = config.session_path or (
+                config.base_dir / f"{config.session_name}.session"
+            )
+            session = EncryptedSQLiteSession(str(session_path), keystore_name=config.session_name)
+            client = TelegramClient(session, config.api_id, config.api_hash)
+            # Interactive login: prompts for phone number and SMS/app code
+            await client.start()
+            await client.disconnect()
+            print("first-run login complete. Re-run without --first-run to start the MCP server.")
+            return 0
+        except Exception as exc:
+            print(f"First-run login failed: {exc}", file=sys.stderr)
+            return 2
+
+    # 2d. Apply poll buffer size from config BEFORE client_holder.start() so
+    # the update handler uses the right buffer size from the very first message.
+    from mcp_bridge.tools import poll as _poll
+    _poll.set_buffer_size(config.poll_buffer_size)
+
+    # 2e. Create Correlation instance (needed for ask_user)
+    from mcp_bridge.correlation import Correlation
+    correlation_db_path = Path(config.base_dir) / ".correlation.db"
+    correlation = Correlation(str(correlation_db_path), config=config)
+    correlation.open()
+
+    # 3. Start client (passes correlation so update handler can call match_reply)
     try:
         from mcp_bridge import client_holder
-        await client_holder.start(config)
+        await client_holder.start(config, correlation=correlation)
     except ImportError as exc:
+        correlation.close()
         print(f"Platform error: {exc}", file=sys.stderr)
         return 2
     except BridgeError as exc:
+        correlation.close()
         print(f"Session error: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:
+        correlation.close()
         print(f"Failed to start client: {exc}", file=sys.stderr)
         return 2
 
     # 4. Run server
     try:
         from mcp_bridge.server import run_server
-        await run_server(client_holder.client(), config)
+        await run_server(client_holder.client(), config, correlation=correlation)
         return 0
     except Exception as exc:
         __log__.exception("Runtime error")
@@ -115,6 +163,10 @@ async def _run(args) -> int:
             await client_holder.stop()
         except Exception as exc:
             __log__.warning("Error during shutdown: %s", exc)
+        try:
+            correlation.close()
+        except Exception as exc:
+            __log__.warning("Error closing correlation: %s", exc)
 
 
 def main() -> None:

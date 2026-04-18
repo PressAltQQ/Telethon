@@ -2,9 +2,8 @@
 MCP stdio server for the Telethon bridge.
 
 Registers tool handlers dispatched by name → callable.
-Tools registered this sprint: list_channel_files, download_file,
-  send_message (Sprint 4), ask_user (Sprint 4).
-Stub registrations for Sprint 5: poll_chat_since.
+Tools registered: list_channel_files, download_file,
+  send_message, ask_user, poll_chat_since.
 
 All errors surface as {"error": {"code": "...", "message": "...", ...}} per spec §5.
 Tracebacks are never leaked to the MCP client surface.
@@ -12,32 +11,57 @@ Tracebacks are never leaked to the MCP client surface.
 from __future__ import annotations
 
 import logging
+import os
+import uuid
 from typing import Any, Callable, Dict
 
-from mcp_bridge.errors import BridgeError, InternalError, NotImplementedBridgeError, to_error_response
+from mcp_bridge.errors import BridgeError, InternalError, to_error_response
+from mcp_bridge.logging_setup import hash_chat_id, log_tool
+from mcp_bridge.tools import poll as _poll_module
 
 __log__ = logging.getLogger(__name__)
+
+# Module-level connection_id: single value per process lifetime (one daemon = one connection)
+_CONNECTION_ID: str = str(uuid.uuid4())
+_poll_module.set_connection_id(_CONNECTION_ID)
 
 # Tool registry: tool_name → async callable(client, config, **kwargs) → dict
 _TOOL_REGISTRY: Dict[str, Callable] = {}
 
-# Tools that remain stubbed until Sprint 5
-_STUB_TOOLS = {"poll_chat_since"}
+# Static key for chat_id hashing when no session root_key is available.
+# In production, replace with the session root_key if accessible.
+_HASH_KEY_FALLBACK: bytes = b"\x00" * 32
+
+
+def _get_root_key() -> bytes:
+    """Return the root_key for hash_chat_id, falling back to a zero key.
+
+    Tries to load from env vars; returns zero bytes if unavailable.
+    This ensures hash_chat_id is always called with *some* key — the
+    audit log entry is still emitted even when the session root_key is
+    not directly accessible from server.py.
+    """
+    import base64
+    key_b64 = os.environ.get("TELETHON_SESSION_KEY")
+    if key_b64:
+        try:
+            key = base64.b64decode(key_b64)
+            if len(key) == 32:
+                return key
+        except Exception:
+            pass
+    return _HASH_KEY_FALLBACK
+
+
+def _extract_chat_identifier(tool_name: str, arguments: Dict[str, Any]) -> int | None:
+    """Extract the chat/channel identifier from tool arguments for audit hashing."""
+    # Most tools use chat_id; downloader tools use channel_id
+    return arguments.get("chat_id") or arguments.get("channel_id")
 
 
 def register_tool(name: str, handler: Callable) -> None:
     """Register a tool handler by name."""
     _TOOL_REGISTRY[name] = handler
-
-
-async def _stub_handler(**kwargs) -> dict:
-    """Raise NotImplementedBridgeError for not-yet-implemented tools."""
-    raise NotImplementedBridgeError("not yet implemented")
-
-
-def _register_stubs() -> None:
-    for name in _STUB_TOOLS:
-        _TOOL_REGISTRY[name] = _stub_handler
 
 
 async def dispatch_tool(
@@ -49,62 +73,46 @@ async def dispatch_tool(
 ) -> dict:
     """Dispatch a tool call by name, returning a structured result.
 
+    Wraps every call with log_tool + hash_chat_id for the JSON-lines audit log.
     Never raises — all errors are caught and returned as structured error dicts.
     """
     handler = _TOOL_REGISTRY.get(tool_name)
     if handler is None:
         return {"error": {"code": "INTERNAL", "message": f"Unknown tool: {tool_name!r}"}}
 
-    try:
-        if tool_name == "ask_user":
-            return await handler(
-                client=client, config=config, correlation=correlation, **arguments
-            )
-        return await handler(client=client, config=config, **arguments)
-    except BridgeError as exc:
-        __log__.warning("Tool %r returned error: %s", tool_name, exc)
-        return to_error_response(exc)
-    except Exception:
-        __log__.exception("Unexpected error in tool %r", tool_name)
-        bridge_exc = InternalError(f"Unexpected error in {tool_name!r}")
-        return to_error_response(bridge_exc)
+    chat_identifier = _extract_chat_identifier(tool_name, arguments)
+    root_key = _get_root_key()
+    chat_id_hashed = hash_chat_id(chat_identifier, root_key) if chat_identifier is not None else None
 
-
-def build_server(client, config, correlation=None):
-    """Build and return an MCP FastMCP server with all tools registered.
-
-    Registers the tool list from _TOOL_REGISTRY, including stubs.
-    """
-    from mcp.server.fastmcp import FastMCP
-
-    _register_stubs()
-
-    mcp = FastMCP("telethon-mcp-bridge")
-
-    # Register all tools dynamically
-    for tool_name, handler in _TOOL_REGISTRY.items():
-        # Create a closure to capture tool_name and handler
-        def make_tool(name, h):
-            async def tool_fn(**kwargs):
-                result = await dispatch_tool(name, kwargs, client, config, correlation)
-                return result
-            tool_fn.__name__ = name
-            return tool_fn
-
-        mcp.add_tool(make_tool(tool_name, handler), name=tool_name)
-
-    return mcp
+    with log_tool(tool_name, chat_id_hashed, os.getpid()) as ctx:
+        try:
+            if tool_name == "ask_user":
+                result = await handler(
+                    client=client, config=config, correlation=correlation, **arguments
+                )
+            else:
+                result = await handler(client=client, config=config, **arguments)
+            ctx.outcome = "ok"
+            return result
+        except BridgeError as exc:
+            __log__.warning("Tool %r returned error: %s", tool_name, exc)
+            ctx.outcome = f"error:{exc.CODE}"
+            return to_error_response(exc)
+        except Exception:
+            __log__.exception("Unexpected error in tool %r", tool_name)
+            bridge_exc = InternalError(f"Unexpected error in {tool_name!r}")
+            ctx.outcome = f"error:{bridge_exc.CODE}"
+            return to_error_response(bridge_exc)
 
 
 async def run_server(client, config, correlation=None) -> None:
     """Run the MCP stdio server until shutdown."""
     from mcp.server.stdio import stdio_server
 
-    _register_stubs()
-
     from mcp_bridge.tools.bridge import ask_user as _ask_user
     from mcp_bridge.tools.bridge import send_message as _send_message
     from mcp_bridge.tools.downloader import download_file, list_channel_files
+    from mcp_bridge.tools.poll import poll_chat_since as _poll_chat_since
 
     register_tool("list_channel_files", lambda **kw: list_channel_files(
         client, config, kw["channel_id"],
@@ -130,6 +138,18 @@ async def run_server(client, config, correlation=None) -> None:
         )
 
     register_tool("ask_user", _ask_user_handler)
+
+    async def _poll_handler(**kw):
+        return await _poll_chat_since(
+            config=config,
+            chat_id=kw["chat_id"],
+            since_message_id=kw["since_message_id"],
+            timeout_ms=kw.get("timeout_ms", 1500),
+            connection_id=_CONNECTION_ID,
+            client=client,
+        )
+
+    register_tool("poll_chat_since", _poll_handler)
 
     # Build lowlevel server for stdio
     from mcp import types

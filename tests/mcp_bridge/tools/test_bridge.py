@@ -197,7 +197,8 @@ class TestAskUser:
         corr.close()
 
     @pytest.mark.asyncio
-    async def test_send_failure_sets_state_to_send_failed(self, tmp_path):
+    async def test_send_failure_leaves_no_orphaned_row(self, tmp_path):
+        """I-3: send FIRST — if send fails, no pending row is inserted in the DB."""
         from mcp_bridge.tools.bridge import ask_user
 
         corr = _make_correlation_db(tmp_path)
@@ -208,10 +209,11 @@ class TestAskUser:
         with pytest.raises(AskSendFailedError):
             await ask_user(client, corr, cfg, chat_id=100, text="q?", timeout_sec=2.0)
 
+        # No pending row should exist — the send failed before insert_pending was called
         row = corr._db.execute(
             "SELECT state FROM pending_asks"
         ).fetchone()
-        assert row["state"] == "send_failed"
+        assert row is None, "No row should be inserted when send_message fails before insert_pending"
         corr.close()
 
     @pytest.mark.asyncio

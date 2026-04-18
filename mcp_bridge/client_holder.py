@@ -58,9 +58,37 @@ def _extract_chat_id(update) -> Optional[int]:
     return chat_id
 
 
+def _build_msg_metadata(msg) -> dict:
+    """Build message metadata dict for poll ring buffer.
+
+    Only includes documented fields — never raw file bytes.
+    """
+    import datetime as _dt
+
+    date = getattr(msg, "date", None)
+    if isinstance(date, _dt.datetime):
+        date = date.isoformat()
+
+    media = getattr(msg, "media", None)
+    has_media = media is not None
+    media_summary: str | None = None
+    if has_media:
+        media_summary = type(media).__name__
+
+    return {
+        "message_id": getattr(msg, "id", None),
+        "from_id": getattr(msg, "from_id", None),
+        "text": getattr(msg, "text", None) or getattr(msg, "message", None),
+        "reply_to_msg_id": getattr(msg, "reply_to_msg_id", None),
+        "date": date,
+        "has_media": has_media,
+        "media_summary": media_summary,
+    }
+
+
 def _on_update(update) -> None:
-    """Update handler: whitelist-filter and feed messages to correlation."""
-    if _correlation is None or _config is None:
+    """Update handler: whitelist-filter and feed messages to correlation + poll buffers."""
+    if _config is None:
         return
 
     chat_id = _extract_chat_id(update)
@@ -75,10 +103,21 @@ def _on_update(update) -> None:
     if msg is None:
         return
 
-    try:
-        _correlation.match_reply(chat_id, msg)
-    except Exception:
-        __log__.exception("Error in correlation.match_reply for chat_id=%s", chat_id)
+    # Feed correlation (if active)
+    if _correlation is not None:
+        try:
+            _correlation.match_reply(chat_id, msg)
+        except Exception:
+            __log__.exception("Error in correlation.match_reply for chat_id=%s", chat_id)
+
+    # Feed poll ring buffer for chats in read_chats
+    if chat_id in set(_config.read_chats):
+        try:
+            from mcp_bridge.tools import poll
+            meta = _build_msg_metadata(msg)
+            poll.ingest_message(chat_id, meta)
+        except Exception:
+            __log__.exception("Error in poll.ingest_message for chat_id=%s", chat_id)
 
 
 async def start(config, correlation=None) -> None:

@@ -2,8 +2,9 @@
 MCP stdio server for the Telethon bridge.
 
 Registers tool handlers dispatched by name → callable.
-Tools registered this sprint: list_channel_files, download_file.
-Stub registrations for Sprint 4/5: send_message, ask_user, poll_chat_since.
+Tools registered this sprint: list_channel_files, download_file,
+  send_message (Sprint 4), ask_user (Sprint 4).
+Stub registrations for Sprint 5: poll_chat_since.
 
 All errors surface as {"error": {"code": "...", "message": "...", ...}} per spec §5.
 Tracebacks are never leaked to the MCP client surface.
@@ -20,8 +21,8 @@ __log__ = logging.getLogger(__name__)
 # Tool registry: tool_name → async callable(client, config, **kwargs) → dict
 _TOOL_REGISTRY: Dict[str, Callable] = {}
 
-# Tools that have stub implementations (not yet implemented)
-_STUB_TOOLS = {"send_message", "ask_user", "poll_chat_since"}
+# Tools that remain stubbed until Sprint 5
+_STUB_TOOLS = {"poll_chat_since"}
 
 
 def register_tool(name: str, handler: Callable) -> None:
@@ -44,6 +45,7 @@ async def dispatch_tool(
     arguments: Dict[str, Any],
     client,
     config,
+    correlation=None,
 ) -> dict:
     """Dispatch a tool call by name, returning a structured result.
 
@@ -54,6 +56,10 @@ async def dispatch_tool(
         return {"error": {"code": "INTERNAL", "message": f"Unknown tool: {tool_name!r}"}}
 
     try:
+        if tool_name == "ask_user":
+            return await handler(
+                client=client, config=config, correlation=correlation, **arguments
+            )
         return await handler(client=client, config=config, **arguments)
     except BridgeError as exc:
         __log__.warning("Tool %r returned error: %s", tool_name, exc)
@@ -64,7 +70,7 @@ async def dispatch_tool(
         return to_error_response(bridge_exc)
 
 
-def build_server(client, config):
+def build_server(client, config, correlation=None):
     """Build and return an MCP FastMCP server with all tools registered.
 
     Registers the tool list from _TOOL_REGISTRY, including stubs.
@@ -80,7 +86,7 @@ def build_server(client, config):
         # Create a closure to capture tool_name and handler
         def make_tool(name, h):
             async def tool_fn(**kwargs):
-                result = await dispatch_tool(name, kwargs, client, config)
+                result = await dispatch_tool(name, kwargs, client, config, correlation)
                 return result
             tool_fn.__name__ = name
             return tool_fn
@@ -90,19 +96,15 @@ def build_server(client, config):
     return mcp
 
 
-async def run_server(client, config) -> None:
+async def run_server(client, config, correlation=None) -> None:
     """Run the MCP stdio server until shutdown."""
     from mcp.server.stdio import stdio_server
 
     _register_stubs()
 
+    from mcp_bridge.tools.bridge import ask_user as _ask_user
+    from mcp_bridge.tools.bridge import send_message as _send_message
     from mcp_bridge.tools.downloader import download_file, list_channel_files
-
-    async def _list_channel_files(channel_id: int, since: int = None, limit: int = 100):
-        return await list_channel_files(client, config, channel_id, since=since, limit=limit)
-
-    async def _download_file(channel_id: int, message_id: int, batch_cursor: dict = None):
-        return await download_file(client, config, channel_id, message_id, batch_cursor=batch_cursor)
 
     register_tool("list_channel_files", lambda **kw: list_channel_files(
         client, config, kw["channel_id"],
@@ -112,6 +114,22 @@ async def run_server(client, config) -> None:
         client, config, kw["channel_id"], kw["message_id"],
         batch_cursor=kw.get("batch_cursor")
     ))
+    register_tool("send_message", lambda **kw: _send_message(
+        client, config, kw["chat_id"], kw["text"]
+    ))
+
+    async def _ask_user_handler(**kw):
+        return await _ask_user(
+            client=client,
+            correlation=correlation,
+            config=config,
+            chat_id=kw["chat_id"],
+            text=kw["text"],
+            timeout_sec=kw.get("timeout_sec", 1800),
+            target_user_id=kw.get("target_user_id"),
+        )
+
+    register_tool("ask_user", _ask_user_handler)
 
     # Build lowlevel server for stdio
     from mcp import types
@@ -133,7 +151,7 @@ async def run_server(client, config) -> None:
     @server.call_tool()
     async def handle_call_tool(name: str, arguments: dict):
         import json
-        result = await dispatch_tool(name, arguments or {}, client, config)
+        result = await dispatch_tool(name, arguments or {}, client, config, correlation)
         return [types.TextContent(type="text", text=json.dumps(result, default=str))]
 
     async with stdio_server() as (read_stream, write_stream):

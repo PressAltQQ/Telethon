@@ -114,6 +114,49 @@ class TestSingleInstanceLock:
         assert mode == "0o600"
 
 
+class TestCorrelationLifecycle:
+    @pytest.mark.asyncio
+    async def test_start_opens_correlation_before_recovery(self, tmp_path):
+        """start() must call correlation.open() before correlation.recover_on_startup()."""
+        import mcp_bridge.client_holder as ch
+
+        session_path = tmp_path / "test.session"
+        cfg = FakeConfig(session_path=session_path)
+
+        mock_client = mock.AsyncMock()
+        mock_session = mock.MagicMock()
+
+        call_order = []
+        mock_corr = mock.MagicMock()
+        mock_corr.open.side_effect = lambda: call_order.append("open")
+        mock_corr.recover_on_startup.side_effect = lambda: (
+            call_order.append("recover") or {"timed_out_count": 0, "orphaned_count": 0}
+        )
+        mock_corr.janitor_loop = mock.AsyncMock(side_effect=asyncio.CancelledError)
+
+        with (
+            mock.patch("mcp_bridge.client_holder.EncryptedSQLiteSession", return_value=mock_session),
+            mock.patch("mcp_bridge.client_holder.TelegramClient", return_value=mock_client),
+        ):
+            await ch.start(cfg, correlation=mock_corr)
+            await ch.stop()
+
+        assert call_order.index("open") < call_order.index("recover"), (
+            f"open() must be called before recover_on_startup(); got order: {call_order}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_correlation_open_idempotent(self, tmp_path):
+        """Correlation.open() called twice must not raise (idempotent)."""
+        from mcp_bridge.correlation import Correlation
+
+        db_path = str(tmp_path / "corr.db")
+        corr = Correlation(db_path)
+        corr.open()
+        corr.open()  # second call must be a no-op, not raise
+        corr.close()
+
+
 class TestWin32Guard:
     def test_win32_raises_import_error(self, monkeypatch):
         """Importing client_holder on win32 should raise ImportError."""

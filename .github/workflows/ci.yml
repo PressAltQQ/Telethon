@@ -41,6 +41,15 @@ jobs:
             --cov-fail-under=20 \
             -q
 
+      - name: Run tests (mcp_bridge per-scope gate)
+        run: |
+          # TODO: raise --cov-fail-under to 80 once mcp_bridge coverage rises
+          uv run pytest tests/mcp_bridge/ -m "not live" \
+            --cov=mcp_bridge \
+            --cov-report=term-missing \
+            --cov-fail-under=74 \
+            -q
+
       - name: pip-audit (runtime deps only)
         run: |
           uv pip install pip-audit

@@ -6,7 +6,15 @@
 
 # User session
 *.session
+/sessions/
 /usermedia/
+
+# Local env / secrets
+.env
+.env.*
+
+# Superflow runtime state (per-repo)
+.superflow-state.json
 
 # Builds and testing
 __pycache__/
@@ -33,12 +41,20 @@ htmlcov/
 # Worktrees (managed by git-worktree, not tracked)
 .worktrees/
 
-# Exception: MCP bridge evidence & runbooks (committed, not Sphinx build output)
+# Exception: docs/ subdirectories that are committed (not Sphinx build output)
+!docs/
+# Exception: MCP bridge evidence & runbooks
 !docs/mcp_bridge/
 !docs/mcp_bridge/**
 # Exception: Superflow plans/specs/health report (committed governance docs)
 !docs/superflow/
 !docs/superflow/**
+# Exception: Superpowers plans (committed governance docs)
+!docs/superpowers/
+!docs/superpowers/**
+# Exception: Archived security reference docs
+!docs/security/
+!docs/security/**
 # Exception: Upstream sync procedure
 !docs/UPSTREAM_SYNC.md
 .par-evidence.json

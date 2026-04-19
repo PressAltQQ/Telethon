@@ -1,14 +1,15 @@
 # Project Health Report
-<!-- updated-by-superflow:2026-04-17 -->
+<!-- updated-by-superflow:2026-04-19 (post-MCP-bridge merge) -->
 
 ## Overview
 
-- **Stack:** Python 3.13 async library (asyncio). Dependencies: `pyaes`, `rsa`. Build: `setuptools` via `setup.py` + `pyproject.toml` (tox legacy ini).
+- **Stack:** Python 3.11+ async library (asyncio). Runtime deps: `cryptography`, `keyring`, `mcp`, `rsa`. Build: `setuptools` via `setup.py` + `pyproject.toml`. Package manager: `uv` (lock at `uv.lock`).
 - **Framework:** This project **is** a client library — Telethon, a Python MTProto/Telegram client. This repo is a **fork** of [`codeberg.org/Lonami/Telethon`](https://codeberg.org/Lonami/Telethon) at [`github.com/PressAltQQ/Telethon`](https://github.com/PressAltQQ/Telethon).
-- **Size:** 247 tracked files; 220 Python source files; ~127k LOC under `telethon/` (of which ~85% is auto-generated TL schema).
-- **Tests:** 23 test files vs 150 `telethon/*.py` files (15.3% raw; ~42% when excluding generated TL).
-- **Python:** dev 3.13; `setup.py` declares `python_requires=">=3.5"`; tox envs target py35–py38; ReadTheDocs builds on 3.11.
-- **Current branch:** `security/fix-medium-and-low-vulnerabilities` — 20 commits ahead of `v1`, all security hardening.
+- **Size:** ~250 tracked files; 220+ Python source files; ~127k LOC under `telethon/` (of which ~85% is auto-generated TL schema). New `mcp_bridge/` subtree (~1.5k LOC) shipped 2026-04-19.
+- **Tests:** 366 passing (`tests/telethon/` + `tests/mcp_bridge/`). Telethon-side line coverage ~25% (most uncovered paths are upstream code never exercised by this fork).
+- **Python:** dev 3.13; CI matrix py3.11 + py3.13; `python_requires=">=3.11"`.
+- **CI:** `.github/workflows/ci.yml` — ruff, pytest with coverage gate, pip-audit on every push/PR.
+- **Active branch:** `v1` is the integration branch (5 MCP bridge sprints landed 2026-04-19).
 
 ## Hand-Written Large Files (>500 LOC) — Refactoring Candidates
 
@@ -42,32 +43,30 @@ Pragmatic coupling (acceptable for an MTProto library):
 
 | Priority | Issue | Location | Evidence | Recommendation |
 |---|---|---|---|---|
-| P0 | No CI enforcement | — | zero `.github/workflows/`, tox unused in pipeline | Add GH Actions: flake8, pytest, pip-audit |
-| P0 | No automated dependency scanning | — | no Dependabot/Renovate/pip-audit | Enable Dependabot + pip-audit in CI |
-| P1 | `python_requires=">=3.5"` | `setup.py:232` | 3.5/3.6/3.7/3.8 all EOL | Bump to `>=3.9` minimum |
-| P1 | tox envs target py35–py38 | `pyproject.toml:11` | unusable on 3.9+ dev machines | Replace with py39,py310,py311,py312,py313 |
-| P1 | `dev-requirements.txt` fully unpinned | `dev-requirements.txt` | `pytest` with no version | Pin to ranges for reproducibility |
-| P1 | pyaes unmaintained | `requirements.txt:1` | `pyaes==1.6.1` last release 2017; timing side-channels | Warn or require `cryptg` at runtime |
-| P1 | Fork divergence invisible | README.rst, changelog, docs/ | no mention this is a hardening fork | Add CONTRIBUTING.md + README fork header + FORK_NOTES.md |
+| ✅ DONE | No CI enforcement | — | resolved — `.github/workflows/ci.yml` runs ruff + pytest + pip-audit on py3.11/3.13 | Sprint 1 of MCP bridge run |
+| ✅ DONE | No automated dependency scanning | — | resolved — `.github/dependabot.yml` (security-only, weekly) + pip-audit in CI | Sprint 1 |
+| ✅ DONE | `python_requires=">=3.5"` | `setup.py` | resolved — `python_requires=">=3.11"` | Sprint 1 |
+| ✅ DONE | tox envs target py35–py38 | `pyproject.toml` | tox legacy ini removed; uv + pytest is canonical now | Sprint 1 |
+| ✅ DONE | pyaes unmaintained | `requirements.txt` | pyaes removed from runtime path; `cryptography` is default; pyaes opt-in via `TELETHON_ALLOW_PYAES=1` | Sprint 2 |
+| ✅ DONE | Stale linter footprint | — | ruff added + enforced in CI | Sprint 1 |
+| ✅ DONE | `update-docs.sh` destructive git | `update-docs.sh` | file deleted | Sprint 1 |
+| P1 | `dev-requirements.txt` fully unpinned | `dev-requirements.txt` | `pytest` with no version | uv handles dev pins via `[project.optional-dependencies].dev`; can delete or keep for non-uv users |
+| P1 | Fork divergence invisible | README.rst, changelog, docs/ | no mention this is a hardening fork | Add CONTRIBUTING.md + README fork header + FORK_NOTES.md (still pending) |
 | P1 | Critical modules untested | `client/{auth,downloads,uploads}.py`, `network/mtprotosender.py`, `_updates/messagebox.py` | no `test_auth.py`, etc. (see Coverage Gaps) | Add smoke tests before refactors |
+| P1 | Coverage gate is loose (20%) | `.github/workflows/ci.yml` | global `--cov=telethon --cov-fail-under=20` | Add per-scope gate `--cov=mcp_bridge --cov-fail-under=80` rather than raise the global floor |
 | P2 | No type hints on public API | `telethon/utils.py` 49 funcs 0 annotated; most `client/*.py` modules | Coverage ~15-20% on public APIs | Progressive typing; start with `client/*.py` public methods |
 | P2 | 67 TODO/FIXME comments | top: `mtprotosender.py` (11), `telegrambaseclient.py` (6), `downloads.py` (5), `updates.py` (5) | grep-counted under `telethon/` and `telethon_generator/` | Convert stale TODOs → GitHub issues, delete obsolete |
 | P2 | `.gitignore` gaps | — | missing `.env`, `sessions/` (dir form), `.worktrees/`, `.superflow-state.json` | Update .gitignore |
-| P2 | Stale linter footprint | — | no ruff/black/isort/mypy; flake8 advisory-only | Add ruff + ruff format; enforce in CI |
-| P2 | tox config stale | `pyproject.toml` | still `legacy_tox_ini` with py35–py38 | Modernize (or remove if abandoning tox) |
-| P2 | 3 untracked security deliverables at repo root | `01_lockdown_guide.md`, `02_mcp_server.py`, `03_why_stdio_only.md` | numeric prefix suggests drafts | Decide: land in `docs/security/` or delete |
-| P3 | `update-docs.sh` uses destructive git | `update-docs.sh` | `git push --force --amend` on gh-pages | Replace with RTD webhook (already configured) |
+| P2 | 3 untracked security deliverables at repo root | `01_lockdown_guide.md`, `02_mcp_server.py`, `03_why_stdio_only.md` | numeric prefix suggests drafts; `02_mcp_server.py` has been superseded by `mcp_bridge/` package | Delete `02_mcp_server.py`; move 01/03 to `docs/security/` or delete |
 | P3 | `setup.py pypi` command deprecated build | `setup.py` | uses `setup.py sdist bdist_wheel` | Migrate to `build` + `twine` via GH Actions |
 
 ## DevOps & Infrastructure
 
-- **CI/CD:** **None.** No `.github/workflows/`, no GitLab CI, no Travis. Only ReadTheDocs webhook for docs build.
-- **Release:** Manual via `python3 setup.py pypi` → twine. Deprecated setup.py build, no tag trigger, no OIDC, no GPG signing.
-- **tox:** declared envs py35–py38 (unusable on dev machine at 3.13).
-- **Pre-commit:** not configured.
-- **Security scanning:** none (Dependabot/Renovate/CodeQL absent).
-- **Backups:** N/A (library, not a service).
-- **.gitignore gaps:** `.env`, `sessions/` (dir form), `.worktrees/`, `.superflow-state.json` not covered.
+- **CI/CD:** GitHub Actions `.github/workflows/ci.yml` — Python 3.11 + 3.13 matrix; ruff lint, pytest with `--cov=telethon --cov-fail-under=20`, pip-audit on runtime deps. Actions pinned to commit SHAs.
+- **Release:** still manual via `python3 setup.py pypi` → twine. No tag trigger, no OIDC, no GPG signing (P3 follow-up).
+- **Dependency scanning:** Dependabot (`.github/dependabot.yml`, security-only, weekly) + pip-audit in CI.
+- **Pre-commit:** not configured (low priority — ruff in CI catches lint).
+- **.gitignore gaps:** `.env`, `sessions/` (dir form), `.worktrees/`, `.superflow-state.json` still not covered.
 
 ## Documentation Freshness
 
@@ -141,8 +140,13 @@ All previously remaining findings are now closed via the MCP bridge sprint work:
 
 ## Overall Posture
 
-Strong recovery from an initial security audit: C-1, C-2 and all H-# findings are fixed or closed. H-4 and H-6 (session encryption) are CLOSED via Sprint 2 MCP bridge work (`mcp_bridge/session/EncryptedSQLiteSession`). Low/medium fixes are minimal-change and accurate. The two residual concerns worth tackling next: (1) `M-14` retry is cosmetic; (2) `pyaes` is structurally weak and `python_requires` is stuck at 3.5.
+Strong recovery from the initial security audit, now reinforced by the MCP bridge run (2026-04-19): all C/H/M/L/N findings are fixed or have a documented residual rationale. CI is live with ruff + pytest + pip-audit on every push, runtime crypto is on `cryptography` instead of `pyaes`, and session storage is encrypted at rest via `mcp_bridge/session/EncryptedSQLiteSession`.
 
-Beyond security, the project's main non-code weaknesses are **no CI**, **no dependency scanning**, **stale tox envs**, and **zero fork-divergence signaling** to downstream readers.
+Remaining non-code weaknesses, in rough priority:
 
-<!-- updated-by-superflow:2026-04-18 Sprint 5 complete — SC1–SC6 all closed -->
+1. **Fork divergence signaling** — README.rst still reads as upstream; no `CONTRIBUTING.md` or fork header. A reader doing `pip install telethon` lands on upstream, not this fork.
+2. **Critical-module test coverage** — `client/auth.py`, `network/mtprotosender.py`, `_updates/messagebox.py` remain effectively untested. Refactor candidates need smoke tests first.
+3. **Coverage gate is loose** — the global `--cov-fail-under=20` was set to unblock the post-rebase cascade. Future work should add per-scope gates (`--cov=mcp_bridge --cov-fail-under=80`) rather than raise the global floor.
+4. **Cleanup** — three untracked top-level files (`01_lockdown_guide.md`, `02_mcp_server.py`, `03_why_stdio_only.md`); `02_mcp_server.py` is now superseded by the `mcp_bridge/` package and can be deleted.
+
+<!-- updated-by-superflow:2026-04-19 Phase 3 complete — MCP bridge merged into v1 -->

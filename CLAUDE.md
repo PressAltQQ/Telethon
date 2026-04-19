@@ -14,8 +14,8 @@ The `mcp_bridge/` package (added in MCP bridge run, 2026-04-19) is a sibling to 
 - **Branch strategy:** `v1` is the main integration branch. Feature/security work lives on branches; `security/*` branches carry hardening commits. Merge only with explicit user permission.
 - **Security-first posture.** Commits are tagged with finding IDs `C-#` / `H-#` / `M-#` / `L-#` (see `git log --oneline -20`). Preserve this convention when landing security work — the SECURITY_AUDIT_REPORT.md tracks those IDs.
 - **H-4 (auth_key plaintext) and H-6 (entity PII plaintext) are CLOSED in Sprint 2 of the MCP bridge work via `mcp_bridge/session/EncryptedSQLiteSession` — see `docs/superflow/specs/2026-04-18-telethon-mcp-bridge-design.md` §2.3.**
-- **Be conservative about style.** `flake8` is advisory only (tox env, max-line-length 127, max-complexity 10). No enforced black/ruff — match surrounding code style rather than reformatting.
-- **Do not touch untracked security deliverables** (`01_lockdown_guide.md`, `02_mcp_server.py`, `03_why_stdio_only.md`) unless explicitly asked.
+- **Be conservative about style.** `flake8` is advisory only (tox env, max-line-length 127, max-complexity 10). Enforced lint is `ruff` in CI. `tests/` is excluded from ruff via `pyproject.toml` — match surrounding code style rather than reformatting.
+- **Archived security reference docs live under `docs/security/`** — `lockdown_guide.md` (flagged stale `telethon==1.36.0` pin) and `why_stdio_only.md` (MCP transport reasoning). Canonical runtime posture is `docs/mcp_bridge/README.md` + `SECURITY_AUDIT_REPORT.md`.
 
 ## Architecture
 Layered, dependency direction: `client/` → `network/` + `sessions/` + `events/` + `_updates/` → `tl/` + `crypto/` + `extensions/` + `errors/` + `helpers`.
@@ -81,8 +81,10 @@ See `docs/superflow/project-health-report.md` for the full table. Highlights:
 - `telethon/utils.py:1571` LOC grab-bag — split into peer_utils / markdown_utils / entity_cache
 - `telethon/network/mtprotosender.py:924` LOC — refactor cautiously, write tests first
 - `telethon/_updates/messagebox.py:825` LOC — high complexity, risky without tests
-- Tests: 366 passing across `tests/telethon/` and `tests/mcp_bridge/` (post-MCP-bridge merge). Telethon-side coverage ~25% (most uncovered paths are upstream code never exercised by this fork).
+- Tests: 391 passing across `tests/telethon/` and `tests/mcp_bridge/` (post project-health cleanup). Telethon-side coverage 25.32%; `mcp_bridge/` per-scope coverage 76.19% (CI gate at 74% floor, TODO raise to 80). Most uncovered paths in `telethon/` are upstream code never exercised by this fork.
 - ruff is enforced in CI; flake8 still works locally as advisory.
+- Smoke-test safety net in place for the five LOC-grab-bag modules (`client/{auth,downloads,uploads}.py`, `network/mtprotosender.py`, `_updates/messagebox.py`) — pins mixin composition + public API signatures so refactor regressions trip a wire.
 - The MCP bridge run intentionally chose polling (`mcp_bridge/tools/poll.py`) over push notifications after a spike — see `docs/mcp_bridge/mcp-notifications-spike.md` for the NO-GO rationale.
 
+<!-- updated-by-superflow:2026-04-19 (post project-health cleanup run) -->
 <!-- updated-by-superflow:2026-04-19 (post-MCP-bridge merge) -->

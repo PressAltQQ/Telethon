@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -151,6 +152,9 @@ async def _run(args) -> int:
 
     # 4. Run server
     try:
+        if os.environ.get("MCP_READONLY") == "1":
+            from mcp_bridge.readonly_guard import install as _install_guard
+            _install_guard(client_holder.client())
         from mcp_bridge.server import run_server
         await run_server(client_holder.client(), config, correlation=correlation)
         return 0

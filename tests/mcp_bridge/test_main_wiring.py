@@ -231,3 +231,51 @@ class TestPollBufferSizeWiring:
             f"set_buffer_size (idx={buffer_idx}) must be called before "
             f"client_holder.start (idx={start_idx}); full order: {call_order}"
         )
+
+
+class TestReadonlyGuardWiring:
+    @pytest.mark.asyncio
+    async def test_readonly_calls_guard_install(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("MCP_READONLY", "1")
+        args = make_args()
+        config = make_config(tmp_path)
+        config.base_dir.mkdir(parents=True, exist_ok=True)
+
+        mock_correlation = MagicMock()
+        mock_correlation.open = MagicMock()
+        mock_correlation.close = MagicMock()
+
+        with patch("mcp_bridge.config.load_config", return_value=config), \
+             patch("mcp_bridge.logging_setup.setup_logging"), \
+             patch("mcp_bridge.client_holder.start", new=AsyncMock()), \
+             patch("mcp_bridge.client_holder.client", return_value=MagicMock()) as m_client, \
+             patch("mcp_bridge.client_holder.stop", new=AsyncMock()), \
+             patch("mcp_bridge.server.run_server", new=AsyncMock()), \
+             patch("mcp_bridge.correlation.Correlation", return_value=mock_correlation), \
+             patch("mcp_bridge.readonly_guard.install") as m_install:
+            from mcp_bridge.__main__ import _run
+            await _run(args)
+            m_install.assert_called_once_with(m_client.return_value)
+
+    @pytest.mark.asyncio
+    async def test_full_mode_does_not_call_guard_install(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("MCP_READONLY", raising=False)
+        args = make_args()
+        config = make_config(tmp_path)
+        config.base_dir.mkdir(parents=True, exist_ok=True)
+
+        mock_correlation = MagicMock()
+        mock_correlation.open = MagicMock()
+        mock_correlation.close = MagicMock()
+
+        with patch("mcp_bridge.config.load_config", return_value=config), \
+             patch("mcp_bridge.logging_setup.setup_logging"), \
+             patch("mcp_bridge.client_holder.start", new=AsyncMock()), \
+             patch("mcp_bridge.client_holder.client", return_value=MagicMock()), \
+             patch("mcp_bridge.client_holder.stop", new=AsyncMock()), \
+             patch("mcp_bridge.server.run_server", new=AsyncMock()), \
+             patch("mcp_bridge.correlation.Correlation", return_value=mock_correlation), \
+             patch("mcp_bridge.readonly_guard.install") as m_install:
+            from mcp_bridge.__main__ import _run
+            await _run(args)
+            m_install.assert_not_called()

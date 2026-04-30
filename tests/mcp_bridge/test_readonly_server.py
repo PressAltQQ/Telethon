@@ -60,3 +60,64 @@ async def test_readonly_mode_omits_send_message_and_ask_user(monkeypatch):
     assert "ask_user" not in server_mod._TOOL_REGISTRY
     assert "poll_chat_since" in server_mod._TOOL_REGISTRY
     assert "download_file" in server_mod._TOOL_REGISTRY
+
+
+class TestDownloadRateLimit:
+    @pytest.mark.asyncio
+    async def test_readonly_acquires_token_before_download(self, monkeypatch):
+        """In read-only mode, download_file must call rate_limiter.acquire()."""
+        monkeypatch.setenv("MCP_READONLY", "1")
+
+        from mcp_bridge import rate_limit
+
+        rate_limit.reset_rate_limiter()
+        bucket = MagicMock()
+        bucket.acquire = AsyncMock()
+        monkeypatch.setattr(
+            "mcp_bridge.rate_limit.get_rate_limiter", lambda config: bucket
+        )
+
+        from mcp_bridge.tools import downloader
+
+        # Force whitelist + early-exit path: not_whitelisted is the cheapest
+        # branch to verify the acquire() was called BEFORE the whitelist check.
+        config = SimpleNamespace(
+            channels=[],
+            read_chats=[],
+            write_chats=[],
+            ask_chats=[],
+            max_ops_per_minute=60,
+            burst=5,
+        )
+
+        # We expect NotWhitelistedError, but acquire() must have been called first.
+        from mcp_bridge.errors import NotWhitelistedError
+        with pytest.raises(NotWhitelistedError):
+            await downloader.download_file(MagicMock(), config, channel_id=999, message_id=1)
+        bucket.acquire.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_full_mode_does_not_acquire_token_for_download(self, monkeypatch):
+        monkeypatch.delenv("MCP_READONLY", raising=False)
+
+        from mcp_bridge import rate_limit
+        rate_limit.reset_rate_limiter()
+        bucket = MagicMock()
+        bucket.acquire = AsyncMock()
+        monkeypatch.setattr(
+            "mcp_bridge.rate_limit.get_rate_limiter", lambda config: bucket
+        )
+
+        from mcp_bridge.tools import downloader
+        config = SimpleNamespace(
+            channels=[],
+            read_chats=[],
+            write_chats=[],
+            ask_chats=[],
+            max_ops_per_minute=60,
+            burst=5,
+        )
+        from mcp_bridge.errors import NotWhitelistedError
+        with pytest.raises(NotWhitelistedError):
+            await downloader.download_file(MagicMock(), config, channel_id=999, message_id=1)
+        bucket.acquire.assert_not_called()

@@ -18,8 +18,11 @@ def _patched_run(monkeypatch):
 
     We stub stdio_server so the loop never starts; we capture the registry by
     inspecting server_mod._TOOL_REGISTRY after the registrations execute.
+
+    monkeypatch replaces _TOOL_REGISTRY with a fresh dict and automatically
+    restores the original at teardown, preventing state bleed between tests.
     """
-    server_mod._TOOL_REGISTRY.clear()
+    monkeypatch.setattr(server_mod, "_TOOL_REGISTRY", {})
 
     class _StubStdioCM:
         async def __aenter__(self):

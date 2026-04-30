@@ -1,11 +1,8 @@
 """Smoke tests for the read-only entrypoint."""
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
-
-import pytest
 
 
 def test_module_sets_env_var_on_import():

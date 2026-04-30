@@ -14,6 +14,5 @@ os.environ.setdefault("MCP_READONLY", "1")
 
 from mcp_bridge.__main__ import main
 
-
 if __name__ == "__main__":
     main()

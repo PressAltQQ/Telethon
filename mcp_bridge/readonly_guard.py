@@ -40,7 +40,14 @@ def install(client) -> None:
     original_send = sender.send
 
     def guarded_send(request, ordered: bool = False):
-        _check_one(request)
+        # Telethon batches via list/tuple. is_list_like in telethon.utils
+        # accepts list/tuple/generator; we mirror list/tuple here (sender.send
+        # never sees generators in practice).
+        if isinstance(request, (list, tuple)):
+            for item in request:
+                _check_one(item)
+        else:
+            _check_one(request)
         return original_send(request, ordered=ordered)
 
     sender.send = guarded_send

@@ -53,3 +53,27 @@ class TestSingleRequest:
             with pytest.raises(PermissionError):
                 client._sender.send(_FakeSendMessage())
         assert any("SendMessageRequest" in rec.message for rec in caplog.records)
+
+
+class TestBatchRequest:
+    def test_all_allowed_batch_passes(self):
+        client, sender = _make_client()
+        original_send = sender.send
+        install(client)
+        client._sender.send([_FakeGetHistory(), _FakeGetHistory()])
+        original_send.assert_called_once()
+
+    def test_one_blocked_in_batch_blocks_entire_batch(self):
+        client, sender = _make_client()
+        original_send = sender.send
+        install(client)
+        with pytest.raises(PermissionError, match="SendMessageRequest"):
+            client._sender.send([_FakeGetHistory(), _FakeSendMessage()])
+        original_send.assert_not_called()
+
+    def test_idempotent_install(self):
+        client, sender = _make_client()
+        install(client)
+        first_wrapped = client._sender.send
+        install(client)
+        assert client._sender.send is first_wrapped

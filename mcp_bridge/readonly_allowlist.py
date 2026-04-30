@@ -15,20 +15,20 @@ import importlib
 from typing import Type
 
 READONLY_ALLOWLIST: frozenset[str] = frozenset({
-    # Auth / login (login allowed; AcceptLoginToken explicitly NOT included)
+    # Auth / login (login allowed; AcceptLoginToken, LogOut, ExportLoginToken NOT included)
     "auth.SendCodeRequest",
     "auth.ResendCodeRequest",
     "auth.SignInRequest",
     "auth.SignUpRequest",
     "auth.CheckPasswordRequest",
-    "auth.LogOutRequest",
     "auth.ImportLoginTokenRequest",
-    "auth.ExportLoginTokenRequest",
     "auth.ExportAuthorizationRequest",
     "auth.ImportAuthorizationRequest",
     "account.GetPasswordRequest",
 
-    # Bootstrap / housekeeping
+    # Bootstrap / housekeeping (bare names = top-level telethon.tl.functions)
+    "PingRequest",
+    "PingDelayDisconnectRequest",
     "help.GetConfigRequest",
     "help.GetNearestDcRequest",
     "updates.GetStateRequest",
@@ -69,12 +69,18 @@ READONLY_ALLOWLIST: frozenset[str] = frozenset({
 
 
 def resolve_class(fq_name: str) -> Type:
-    """Resolve ``module.ClassName`` to the actual class under telethon.tl.functions.
+    """Resolve ``module.ClassName`` (or bare ``ClassName``) to the actual class
+    under ``telethon.tl.functions``.
+
+    If ``fq_name`` contains no dot, the class is looked up directly in
+    ``telethon.tl.functions`` (e.g. ``"PingRequest"``).  Otherwise the dotted
+    prefix is treated as a sub-module (e.g. ``"messages.GetHistoryRequest"``).
 
     Raises ImportError or AttributeError if the class doesn't exist.
     """
     if "." not in fq_name:
-        raise ValueError(f"Expected 'module.ClassName', got {fq_name!r}")
+        module = importlib.import_module("telethon.tl.functions")
+        return getattr(module, fq_name)
     module_part, class_name = fq_name.rsplit(".", 1)
     module = importlib.import_module(f"telethon.tl.functions.{module_part}")
     return getattr(module, class_name)
@@ -84,5 +90,5 @@ def resolve_class(fq_name: str) -> Type:
 # readonly_guard. Comparing ``type(req).__name__`` against strings is cheaper
 # than reflecting back to fully qualified names on every RPC.
 ALLOWED_CLASS_NAMES: frozenset[str] = frozenset(
-    name.rsplit(".", 1)[1] for name in READONLY_ALLOWLIST
+    name.rsplit(".", 1)[-1] for name in READONLY_ALLOWLIST
 )

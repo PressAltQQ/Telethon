@@ -78,3 +78,77 @@ class TestBatchRequest:
         first_wrapped = client._sender.send
         install(client)
         assert client._sender.send is first_wrapped
+
+
+class TestExportedSenderWrapping:
+    @pytest.mark.asyncio
+    async def test_exported_sender_send_is_wrapped(self):
+        """C2: _create_exported_sender must return a sender with guard installed."""
+        exported_sender = MagicMock()
+        exported_sender.send.return_value = "EX_OK"
+
+        original_create = MagicMock(return_value=exported_sender)
+
+        import asyncio
+        async def _async_create(*args, **kwargs):
+            return original_create(*args, **kwargs)
+
+        client, _ = _make_client()
+        client._create_exported_sender = _async_create
+
+        install(client)
+
+        result_sender = await client._create_exported_sender(2)
+        # The returned sender's .send should block write requests
+        with pytest.raises(ReadOnlyBlockedError, match="SendMessageRequest"):
+            result_sender.send(_FakeSendMessage())
+
+    @pytest.mark.asyncio
+    async def test_exported_sender_allows_listed_request(self):
+        """C2: exported sender must still pass allowed requests through."""
+        exported_sender = MagicMock()
+        exported_sender.send.return_value = "EX_OK"
+
+        async def _async_create(*args, **kwargs):
+            return exported_sender
+
+        client, _ = _make_client()
+        client._create_exported_sender = _async_create
+
+        install(client)
+
+        result_sender = await client._create_exported_sender(2)
+        result = result_sender.send(_FakeGetHistory())
+        assert result == "EX_OK"
+
+    @pytest.mark.asyncio
+    async def test_exported_sender_idempotent_wrap(self):
+        """C2: re-wrapping an already-guarded exported sender is a no-op."""
+        exported_sender = MagicMock()
+        exported_sender.send.return_value = "EX_OK"
+
+        async def _async_create(*args, **kwargs):
+            return exported_sender
+
+        client, _ = _make_client()
+        client._create_exported_sender = _async_create
+
+        install(client)
+
+        sender1 = await client._create_exported_sender(2)
+        first_send = sender1.send
+        # Calling again should return same sender object; wrap should be idempotent
+        sender2 = await client._create_exported_sender(2)
+        assert sender2.send is first_send
+
+    def test_kwargs_forwarded_to_original_send(self):
+        """M2: guarded_send must forward *args/**kwargs to original send."""
+        client, sender = _make_client()
+        # Capture the original mock before install replaces sender.send
+        original_mock = sender.send
+        install(client)
+        req = _FakeGetHistory()
+        client._sender.send(req, ordered=True)
+        # original_mock is the MagicMock; verify ordered=True was forwarded
+        _, call_kwargs = original_mock.call_args
+        assert call_kwargs.get("ordered") is True

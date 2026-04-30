@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 
-os.environ.setdefault("MCP_READONLY", "1")
+os.environ["MCP_READONLY"] = "1"
 
 from mcp_bridge.__main__ import main
 

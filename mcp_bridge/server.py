@@ -109,10 +109,13 @@ async def run_server(client, config, correlation=None) -> None:
     """Run the MCP stdio server until shutdown."""
     from mcp.server.stdio import stdio_server
 
-    from mcp_bridge.tools.bridge import ask_user as _ask_user
-    from mcp_bridge.tools.bridge import send_message as _send_message
+    readonly = os.environ.get("MCP_READONLY") == "1"
+
     from mcp_bridge.tools.downloader import download_file, list_channel_files
     from mcp_bridge.tools.poll import poll_chat_since as _poll_chat_since
+    if not readonly:
+        from mcp_bridge.tools.bridge import ask_user as _ask_user
+        from mcp_bridge.tools.bridge import send_message as _send_message
 
     register_tool("list_channel_files", lambda **kw: list_channel_files(
         client, config, kw["channel_id"],
@@ -122,22 +125,26 @@ async def run_server(client, config, correlation=None) -> None:
         client, config, kw["channel_id"], kw["message_id"],
         batch_cursor=kw.get("batch_cursor")
     ))
-    register_tool("send_message", lambda **kw: _send_message(
-        client, config, kw["chat_id"], kw["text"]
-    ))
 
-    async def _ask_user_handler(**kw):
-        return await _ask_user(
-            client=client,
-            correlation=correlation,
-            config=config,
-            chat_id=kw["chat_id"],
-            text=kw["text"],
-            timeout_sec=kw.get("timeout_sec", 1800),
-            target_user_id=kw.get("target_user_id"),
-        )
+    if not readonly:
+        register_tool("send_message", lambda **kw: _send_message(
+            client, config, kw["chat_id"], kw["text"]
+        ))
 
-    register_tool("ask_user", _ask_user_handler)
+        async def _ask_user_handler(**kw):
+            return await _ask_user(
+                client=client,
+                correlation=correlation,
+                config=config,
+                chat_id=kw["chat_id"],
+                text=kw["text"],
+                timeout_sec=kw.get("timeout_sec", 1800),
+                target_user_id=kw.get("target_user_id"),
+            )
+
+        register_tool("ask_user", _ask_user_handler)
+    else:
+        __log__.info("MCP_READONLY=1 — skipping send_message/ask_user registration")
 
     async def _poll_handler(**kw):
         return await _poll_chat_since(

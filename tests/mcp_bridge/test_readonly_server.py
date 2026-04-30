@@ -1,9 +1,8 @@
 """Tests for read-only mode wiring inside server.run_server."""
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 

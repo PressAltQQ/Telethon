@@ -37,12 +37,12 @@ Invoked via `python -m mcp_bridge.server_readonly`.
 A frozenset of TL request class names (strings). Curated, fail-closed. Initial contents:
 
 **Auth / login (allowed — user requested login to work in read-only mode):**
-`auth.SendCodeRequest`, `auth.ResendCodeRequest`, `auth.SignInRequest`, `auth.SignUpRequest`, `auth.CheckPasswordRequest`, `account.GetPasswordRequest`, `auth.LogOutRequest`, `auth.ImportLoginTokenRequest`, `auth.ExportLoginTokenRequest`, `auth.ExportAuthorizationRequest`, `auth.ImportAuthorizationRequest`.
+`auth.SendCodeRequest`, `auth.ResendCodeRequest`, `auth.SignInRequest`, `auth.SignUpRequest`, `auth.CheckPasswordRequest`, `account.GetPasswordRequest`, `auth.ImportLoginTokenRequest`, `auth.ExportAuthorizationRequest`, `auth.ImportAuthorizationRequest`.
 
-Explicitly NOT allowed: `auth.AcceptLoginTokenRequest` (authorize another device), `account.ResetAuthorizationRequest` (kill another session).
+Explicitly NOT allowed: `auth.LogOutRequest` (destructive — kills auth_key), `auth.ExportLoginTokenRequest` (QR-login export can be coerced into account hijack), `auth.AcceptLoginTokenRequest` (authorize another device), `account.ResetAuthorizationRequest` (kill another session).
 
 **Bootstrap / housekeeping:**
-`help.GetConfigRequest`, `help.GetNearestDcRequest`, `updates.GetStateRequest`, `updates.GetDifferenceRequest`, `updates.GetChannelDifferenceRequest`.
+`PingRequest`, `PingDelayDisconnectRequest` (keepalive — bare names, top-level `telethon.tl.functions`), `help.GetConfigRequest`, `help.GetNearestDcRequest`, `updates.GetStateRequest`, `updates.GetDifferenceRequest`, `updates.GetChannelDifferenceRequest`.
 
 **Reading messages and chats:**
 `messages.GetHistoryRequest`, `messages.GetMessagesRequest`, `messages.SearchRequest`, `messages.SearchGlobalRequest`, `messages.GetDialogsRequest`, `messages.GetPeerDialogsRequest`, `messages.GetStickerSetRequest`, `channels.GetMessagesRequest`, `channels.GetFullChannelRequest`, `channels.GetChannelsRequest`, `channels.GetParticipantRequest`, `channels.GetParticipantsRequest`.
@@ -61,7 +61,7 @@ Class names are stored as `ClassName` (last component) — the guard compares ag
 ### 2.4 `mcp_bridge/readonly_guard.py`
 - `install(client)`: replaces `client._sender.send` with a wrapper.
 - `_check(request)`: accepts a single `TLRequest` or a list (Telethon batches via `MTProtoSender.send([req1, req2])`). For lists, every element must be allow-listed; otherwise the entire batch is rejected.
-- On block: log `WARNING readonly_guard blocked: <ClassName>` to stderr and `raise PermissionError(f"RPC blocked in read-only mode: {name}")`. The exception propagates up to the MCP tool, which returns an error to the client. The Telethon session is not torn down.
+- On block: log `WARNING readonly_guard blocked: <ClassName>` to stderr and `raise ReadOnlyBlockedError(f"RPC blocked in read-only mode: {name}")` (`CODE = "READONLY_BLOCKED"`). The exception is a `BridgeError` subclass, so `dispatch_tool` catches it and returns a structured `{"error": {"code": "READONLY_BLOCKED", ...}}` response. The Telethon session is not torn down.
 
 ## 3. Data flow
 
@@ -80,8 +80,8 @@ Effect: protects against an LLM looping over `download_file` and exhausting band
 
 ## 5. Error handling
 
-- Blocked RPC → `PermissionError("RPC blocked in read-only mode: <ClassName>")`. Tool catches and returns MCP error; session continues.
-- Login disallowed methods (`auth.AcceptLoginTokenRequest`, `account.ResetAuthorizationRequest`) → same `PermissionError`.
+- Blocked RPC → `ReadOnlyBlockedError("RPC blocked in read-only mode: <ClassName>")` (`CODE = "READONLY_BLOCKED"`). `dispatch_tool` catches it via the `except BridgeError` branch and returns a structured error response; session continues.
+- Login disallowed methods (`auth.LogOutRequest`, `auth.ExportLoginTokenRequest`, `auth.AcceptLoginTokenRequest`, `account.ResetAuthorizationRequest`) → same `ReadOnlyBlockedError`.
 - Download rate-limit exceeded → existing `RateLimitError` with `retry_after_seconds`.
 - Allow-list import-time validation: at module load, `readonly_allowlist.py` resolves every entry to a real Telethon class via `importlib`. A typo or upstream removal raises `ImportError` at startup (loud, not silent).
 

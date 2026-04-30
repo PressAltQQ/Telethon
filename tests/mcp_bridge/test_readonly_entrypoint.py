@@ -17,6 +17,18 @@ def test_module_sets_env_var_on_import():
     assert out == "1"
 
 
+def test_module_overrides_preexisting_readonly_zero():
+    """M3: MCP_READONLY=0 in the environment must be overridden to 1."""
+    code = (
+        "import os, sys\n"
+        "os.environ['MCP_READONLY'] = '0'\n"
+        "import mcp_bridge.server_readonly  # noqa: F401\n"
+        "print(os.environ.get('MCP_READONLY'))\n"
+    )
+    out = subprocess.check_output([sys.executable, "-c", code], text=True).strip()
+    assert out == "1"
+
+
 def test_help_exits_zero():
     """`python -m mcp_bridge.server_readonly --help` exits 0."""
     proc = subprocess.run(

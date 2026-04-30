@@ -13,6 +13,7 @@ import asyncio
 import contextlib
 import hashlib
 import logging
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -184,6 +185,10 @@ async def download_file(
 
     Returns {local_path, already_downloaded, size?, sha256?}.
     """
+    if os.environ.get("MCP_READONLY") == "1":
+        from mcp_bridge.rate_limit import get_rate_limiter
+        await get_rate_limiter(config).acquire()
+
     if not is_whitelisted(channel_id, "channels", config):
         extras: dict[str, Any] = {}
         if batch_cursor is not None:

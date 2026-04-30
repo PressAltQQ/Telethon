@@ -135,6 +135,10 @@ class DownloadBusyError(BridgeError):
     CODE = "DOWNLOAD_BUSY"
 
 
+class ReadOnlyBlockedError(BridgeError):
+    CODE = "READONLY_BLOCKED"
+
+
 def to_error_response(exc: BridgeError) -> dict[str, Any]:
     """Convert a BridgeError to a structured MCP error dict.
 

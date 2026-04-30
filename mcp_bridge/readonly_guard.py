@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from mcp_bridge.errors import ReadOnlyBlockedError
 from mcp_bridge.readonly_allowlist import ALLOWED_CLASS_NAMES
 
 __log__ = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ def _check_one(request: Any) -> None:
     name = _name(request)
     if name not in ALLOWED_CLASS_NAMES:
         __log__.warning("readonly_guard blocked: %s", name)
-        raise PermissionError(f"RPC blocked in read-only mode: {name}")
+        raise ReadOnlyBlockedError(f"RPC blocked in read-only mode: {name}")
 
 
 def install(client) -> None:

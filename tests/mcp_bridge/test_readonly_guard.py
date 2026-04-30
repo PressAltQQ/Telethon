@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from mcp_bridge.errors import ReadOnlyBlockedError
 from mcp_bridge.readonly_guard import install
 
 
@@ -38,11 +39,11 @@ class TestSingleRequest:
         assert result == "OK"
         original_send.assert_called_once()
 
-    def test_blocked_request_raises_permission_error(self):
+    def test_blocked_request_raises_readonly_blocked_error(self):
         client, sender = _make_client()
         original_send = sender.send
         install(client)
-        with pytest.raises(PermissionError, match="SendMessageRequest"):
+        with pytest.raises(ReadOnlyBlockedError, match="SendMessageRequest"):
             client._sender.send(_FakeSendMessage())
         original_send.assert_not_called()
 
@@ -50,7 +51,7 @@ class TestSingleRequest:
         client, sender = _make_client()
         install(client)
         with caplog.at_level(logging.WARNING, logger="mcp_bridge.readonly_guard"):
-            with pytest.raises(PermissionError):
+            with pytest.raises(ReadOnlyBlockedError):
                 client._sender.send(_FakeSendMessage())
         assert any("SendMessageRequest" in rec.message for rec in caplog.records)
 
@@ -67,7 +68,7 @@ class TestBatchRequest:
         client, sender = _make_client()
         original_send = sender.send
         install(client)
-        with pytest.raises(PermissionError, match="SendMessageRequest"):
+        with pytest.raises(ReadOnlyBlockedError, match="SendMessageRequest"):
             client._sender.send([_FakeGetHistory(), _FakeSendMessage()])
         original_send.assert_not_called()
 

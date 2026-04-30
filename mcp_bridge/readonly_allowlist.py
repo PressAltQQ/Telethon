@@ -14,7 +14,6 @@ from __future__ import annotations
 import importlib
 from typing import Type
 
-
 READONLY_ALLOWLIST: frozenset[str] = frozenset({
     # Auth / login (login allowed; AcceptLoginToken explicitly NOT included)
     "auth.SendCodeRequest",

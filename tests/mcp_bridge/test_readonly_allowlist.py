@@ -1,10 +1,6 @@
 """Read-only allow-list: every name must resolve to a real Telethon class."""
 from __future__ import annotations
 
-import importlib
-
-import pytest
-
 from mcp_bridge.readonly_allowlist import (
     READONLY_ALLOWLIST,
     resolve_class,

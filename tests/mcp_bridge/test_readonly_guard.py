@@ -89,7 +89,6 @@ class TestExportedSenderWrapping:
 
         original_create = MagicMock(return_value=exported_sender)
 
-        import asyncio
         async def _async_create(*args, **kwargs):
             return original_create(*args, **kwargs)
 
